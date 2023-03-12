@@ -1,0 +1,43 @@
+{
+  "name": "node-server",
+  "version": "1.0.0",
+  "description": "How to create node.js server",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "Node.js",
+    "Web",
+    "server"
+  ],
+  "author": "Krunal Lathiya",
+  "license": "ISC",
+  "dependencies": {
+    "await-exec": "^0.1.2",
+    "axios": "^0.27.2",
+    "chatgpt": "^2.5.0",
+    "cors": "^2.8.5",
+    "csv-database": "^0.9.2",
+    "database-js-xlsx": "^1.0.6",
+    "express": "^4.18.1",
+    "helmet": "^5.1.1",
+    "joi": "^17.6.0",
+    "jsonsql": "^0.2.5",
+    "jsonwebtoken": "^8.5.1",
+    "lodash": "^4.17.21",
+    "md5": "^2.3.0",
+    "mysql-ssh": "^1.0.6",
+    "mysql2": "^2.3.3",
+    "nlg": "^0.1.1",
+    "odbc": "^2.4.4",
+    "openai": "^3.1.0",
+    "oracledb": "^5.4.0",
+    "pg": "^8.8.0",
+    "sequelize": "^6.21.4",
+    "ssh2": "^1.11.0",
+    "string-similarity": "^4.0.4",
+    "xhr2": "^0.2.1"
+  }
+}
