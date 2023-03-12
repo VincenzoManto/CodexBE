@@ -9,6 +9,7 @@ const dbMeta = require('./database-metadata.ts');
 const fs = require('fs');
 const childProcess = require("child_process");
 const _ = require('lodash');
+const { default: swaggerDocs } = require('./swagger');
 require('dotenv').config()
 
 
@@ -93,6 +94,7 @@ process.on('uncaughtException', function (err) {
 // PORT
 const port = process.env.CODEX_BE_PORT || 3000;
 app.listen(port, () => {
+    swaggerDocs(app, port);
     console.log('listing on port ' + port);
 });
 
