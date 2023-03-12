@@ -18,7 +18,8 @@ This is the backend for a NQL (Natural Query Language) framework application dev
 DB_USER=<your_mysql_username>
 DB_PASS=<your_mysql_password>
 DB_NAME=<your_mysql_database_name>
-CODex_API_KEY=<your_codex_api_key>```
+CODex_API_KEY=<your_codex_api_key>
+```
 5. Install the required Python libraries using `pip install -r requirements.txt`.
 6. Update the Python script configuration files located in the `ai_modules` directory with the appropriate API keys and credentials.
 7. Start the backend server by running `npm start`.
