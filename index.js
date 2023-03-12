@@ -9,6 +9,7 @@ const dbMeta = require('./database-metadata.ts');
 const fs = require('fs');
 const childProcess = require("child_process");
 const _ = require('lodash');
+require('dotenv').config()
 
 
 
@@ -17,9 +18,6 @@ app.use(helmet());
 app.use(cors());
 
 const accessTokenSecret = 'bGS6lzFqvvSQ8ALbOxatm7/Vk7mLQyzqaS34Q4oR1ew=';
-let openAIAuth, api;
-
-const lastQueries = {};
 
 app.post('/login', async (request, response) => {
     const schema = Joi.object({
@@ -93,7 +91,7 @@ process.on('uncaughtException', function (err) {
 });
 
 // PORT
-const port = process.env.PORT || 3000;
+const port = process.env.CODEX_BE_PORT || 3000;
 app.listen(port, () => {
     console.log('listing on port ' + port);
 });
@@ -101,7 +99,7 @@ app.listen(port, () => {
 
 app.get('/schema/:id/:seek', async (request, response) => {
     const spawn = require("child_process").spawn;
-    const pythonProcess = spawn('python',["ai_modules/fetch-schema.py", request.params['id'], request.params['seek']]);
+    const pythonProcess = spawn('python',["ai_modules/fetch_schema.py", request.params['id'], request.params['seek']]);
     pythonProcess.stdout.on('data', (data) => {
         try {
             response.send(JSON.parse(data));

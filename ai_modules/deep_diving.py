@@ -6,9 +6,12 @@ import json
 import sys
 import mysql.connector
 import sys
-import datetime
+import os
+from dotenv import load_dotenv
+from pathlib import Path
 
-
+dotenv_path = Path(os.path.abspath(__file__) + '../.env')
+load_dotenv()
 
 
 db = sys.argv[1]
@@ -16,10 +19,10 @@ if (db == None):
     raise Exception('No db')
 
 mydb = mysql.connector.connect(
-  host="localhost",
-  user="root",
-  password="1234",
-  database="codex"
+  host=os.getenv("CODEX_DB_HOST"),
+  user=os.getenv("CODEX_DB_USER"),
+  password=os.getenv("CODEX_DB_PASS"),
+  database=os.getenv("CODEX_DB_NAME")
 )
 
 session = sys.argv[2]

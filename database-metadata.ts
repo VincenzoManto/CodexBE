@@ -1,9 +1,10 @@
 const Sequelize = require('sequelize');
-const sequelize = new Sequelize(process.env.DB_SCHEMA || 'codex',
-                                process.env.DB_USER || 'root',
-                                process.env.DB_PASSWORD || '1234',
+require('dotenv').config()
+const sequelize = new Sequelize(process.env.CODEX_DB_NAME || 'codex',
+                                process.env.CODEX_DB_USER || 'root',
+                                process.env.DB_PASCODEX_DB_PASSWORD || '1234',
                                 {
-                                    host: 'localhost',
+                                    host: process.env.CODEX_DB_HOST || 'localhost',
                                     dialect: 'mysql'
                                 });
 
