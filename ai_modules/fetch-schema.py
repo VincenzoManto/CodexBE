@@ -27,7 +27,6 @@ mycursor.execute("SELECT * FROM db WHERE id = %s", (db,))
 connection = mycursor.fetchone()
 
 if (connection['type'] == 'mssql'):
-
   conn = pymssql.connect(connection['server'], connection['username'], connection['password'], connection['name'])
   cursor = conn.cursor(as_dict=True)
 
@@ -61,6 +60,7 @@ if (connection['type'] == 'mssql'):
   mycursor.execute("SELECT * FROM `table` WHERE db = %s", (int(db),))
 
   tables = mycursor.fetchall()
+  tableColumns = {}
   index = 0
   for row in cursor:
     if (row['table_name'] not in cols):
@@ -69,6 +69,8 @@ if (connection['type'] == 'mssql'):
       table = None
       if (len(filtered) > 0):
         table = filtered[0]
+        mycursor.execute("SELECT * FROM `columns` WHERE `table` = %s", (int(table['id']),))
+        tableColumns[row['table_name']] = mycursor.fetchall()
       cols[row['table_name']]['pos'] = {}
       cols[row['table_name']]['pos']['x'] = int(index / 1000) * 200 + 100
       cols[row['table_name']]['pos']['y'] = int(index % 500) + 100
@@ -81,8 +83,14 @@ if (connection['type'] == 'mssql'):
         cols[row['table_name']]['id'] = 0
       index += 200
     newCol = {}
+    if row['table_name'] in tableColumns:
+      metaColumn = next((x for x in tableColumns[row['table_name']] if x['name'] == row['column_name']), None)
+    else:
+      metaColumn = None
     newCol['name'] = row['column_name']
     newCol['type'] = row['data_type']
+    newCol['description'] = metaColumn['description'] if metaColumn is not None else None
+    newCol['id'] = metaColumn['id'] if metaColumn is not None else 0
     if (row['ref_table'] is not None):
       if (row['ref_table'] in cols):
         newCol['fk'] = {}

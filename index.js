@@ -8,6 +8,7 @@ const cors = require('cors');
 const dbMeta = require('./database-metadata.ts');
 const fs = require('fs');
 const childProcess = require("child_process");
+const _ = require('lodash');
 
 
 
@@ -102,19 +103,42 @@ app.get('/schema/:id/:seek', async (request, response) => {
     const spawn = require("child_process").spawn;
     const pythonProcess = spawn('python',["ai_modules/fetch-schema.py", request.params['id'], request.params['seek']]);
     pythonProcess.stdout.on('data', (data) => {
-        response.send(JSON.parse(data));
+        try {
+            response.send(JSON.parse(data));
+        } catch (e) {
+
+        }
         
+    },(error) => {
+        response.status(500).send('Error fetching the schema');
     });
 });
 
 app.post('/schema/:id', async (request, response) => {
     try {
-        const toInsert = request.body.tables.filter(e => e.id === 0 && e.name);
-        toInsert.forEach(e => delete e.id);
+        const toInsert = _.cloneDeep(request.body.tables.filter(e => e.id === 0 && e.name));
+        toInsert.forEach(e => {delete e.id; delete e.columns});
         if (toInsert?.length) {
-            await dbMeta.Table.bulkCreate(
-                toInsert
+            const rows = await dbMeta.Table.bulkCreate(
+                toInsert,  {returning: true}
             );
+            for (const row of rows) {
+                const columns = request.body.tables.find(e => e.name === row.name)?.columns;
+                if (columns?.length) {
+                    for (const column of columns) {
+                        if (column.description) {
+                            await dbMeta.Columns.create(
+                            {                                    
+                                table: row.id,
+                                name: column.name,
+                                description: column.description
+                            });
+                        }
+                    }
+                    
+                }
+            }
+            
         }
         const toUpdate = request.body.tables.filter(e => e.id);
         for (const row of toUpdate) {
@@ -128,9 +152,30 @@ app.post('/schema/:id', async (request, response) => {
                 plain: true
                 }
             );
+            if (row.columns?.length) {
+                for (const column of row.columns) {
+                    if (column.description) {
+                        const [found, created] = await dbMeta.Columns.findOrCreate(
+                            {
+                                where: {id: column.id},
+                                defaults: {
+                                    table: row.id,
+                                    name: column.name,
+                                    description: column.description
+                                }
+                            });
+                        if (!created && found) {
+                            found.update({
+                                description: column.description
+                            })
+                        }
+                    }
+                }
+                
+            }
         }
 
-        if (request.body.fks?.length) {
+        /*if (request.body.fks?.length) {
             await dbMeta.Connection.destroy({
                 where: {
                     db: +request.params['id']
@@ -140,7 +185,7 @@ app.post('/schema/:id', async (request, response) => {
             await dbMeta.Table.bulkCreate(
                 request.body.fks
             );
-        }
+        }*/
         return response.status(200).send();
     } catch (e) {
         console.error(e);
@@ -164,21 +209,6 @@ app.get('/schema-tagging/:id', async (request, response) => {
         response.status(500).send('Error tagging schema');
     });
 });
-
-function sortObject(obj) {
-    var arr = [];
-    for (var prop in obj) {
-        if (obj.hasOwnProperty(prop)) {
-            arr.push({
-                'key': prop,
-                'value': obj[prop]
-            });
-        }
-    }
-    arr.sort((a, b) => { return -(a.value - b.value); });
-    //arr.sort(function(a, b) { return a.value.toLowerCase().localeCompare(b.value.toLowerCase()); }); //use this to sort as strings
-    return arr; // returns array
-}
 
 
 app.get('/data/:session?', async (request, response) => {

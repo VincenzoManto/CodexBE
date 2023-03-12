@@ -31,6 +31,28 @@ const Table = sequelize.define('table', {
     }
 }, { timestamps: false, freezeTableName: true});
 
+
+const Columns = sequelize.define('columns', {
+    id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        autoIncrement: true,
+        primaryKey: true
+    },
+    name: {
+        type: Sequelize.STRING,
+        allowNull: false
+    },
+    table: {
+        type: Sequelize.INTEGER,
+        allowNull: false
+    },
+    description: {
+        type: Sequelize.STRING,
+        allowNull: true
+    }
+}, { timestamps: false, freezeTableName: true});
+
 const Db = sequelize.define('db', {
     id: {
         type: Sequelize.INTEGER,
@@ -138,5 +160,6 @@ module.exports = {
     sequelize: sequelize,
     Db: Db,
     Connection: Connection,
-    Table: Table
+    Table: Table,
+    Columns: Columns
 };

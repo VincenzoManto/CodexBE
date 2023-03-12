@@ -187,6 +187,15 @@ if (connection['type'] == 'mssql' and step > 0):
 
   tables = mycursor.fetchall()
 
+  whereClause = ','.join(list(map(lambda x: str(x['id']), tables)))
+  mycursor.execute("""SELECT concat(t.name, '.', ifnull(c.name, '*')) as name FROM `columns` as c left join `table` as t on c.table = t.id WHERE t.id in (""" + whereClause + """) 
+                   UNION 
+                   SELECT concat(t.name, '.', ifnull(c.name, '*')) as name FROM codex.`columns` as c right join codex.`table` as t on c.table = t.id WHERE t.id in (""" + whereClause + """)""")
+
+  metaColumns = mycursor.fetchall()
+  if metaColumns is not None:
+    metaColumns = list(map(lambda x: x['name'], metaColumns))
+
   tagged_table_names = list(map(lambda x: x['name'], tables))
 
   fks = {}
@@ -206,7 +215,9 @@ if (connection['type'] == 'mssql' and step > 0):
       fk['to_table'] = row['ref_table']
       fk['to_table_alias'] = filtered[0]['description']
       fks[row['table_name']].append(fk)
-    cols[row['table_name']] = cols[row['table_name']] + row['column_name'] + '|'
+    completeName = row['table_name'] + '.' + row['column_name']
+    if completeName in metaColumns or row['table_name'] + '.*' in metaColumns:
+     cols[row['table_name']] = cols[row['table_name']] + row['column_name'] + '|'
 
   schema = ''
   for table in cols:
@@ -224,9 +235,9 @@ if (connection['type'] == 'mssql' and step > 0):
     import openai
 
     openai.api_key = "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"
-    '''
+
     response = openai.Completion.create(
-      model="code-davinci-001",
+      model="gpt-3.5-turbo",
       prompt=gpt_prompt,
       temperature=0,
       max_tokens=150,
@@ -237,7 +248,6 @@ if (connection['type'] == 'mssql' and step > 0):
     )
 
     query = ("SELECT " + response['choices'][0]['text']).replace('\\n','').replace('\\r','')
-    '''
 
     query = "select * from ordinedettc where datains >= '2023-01-01'"
     finalResult['query'] = query
