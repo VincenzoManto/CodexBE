@@ -1,4 +1,6 @@
-# Codex Application Backend
+# Queric - Codex Application Backend
+
+![](./diagrams/wallpaper.png)
 
 This is the backend for a NQL (Natural Query Language) framework application developed with NodeJS and Python. The Python scripts are located in the ai_modules directory and have their own requirements.
 
