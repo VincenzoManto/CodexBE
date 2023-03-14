@@ -40,13 +40,14 @@ for table in tables:
     if table['description'] != None:
         schema[table['name']] = table['description']
 
+'''
 for table in schema.keys():
   synonyms = [] 
   for syn in wordnet.synsets(schema[table]):
     for lm in syn.lemmas():
       synonyms.append(lm.name())
   schema[table] += ',' +  ', '.join(dict.fromkeys(synonyms)).replace('_',' ')
-    
+''' 
 
 tables = schema
 tables
@@ -57,7 +58,11 @@ model = SentenceTransformer('multi-qa-mpnet-base-dot-v1')
 import pickle
 encodes = {}
 for table in tables.keys():
-  encodes[table] = model.encode(tables[table])
+  particles = tables[table].split(',')
+  i = 0
+  for particle in particles:
+    encodes[table + '$$' + str(i)] = model.encode(particle.strip())
+    i = i + 1
 
 mycursor = mydb.cursor(dictionary=True)
 

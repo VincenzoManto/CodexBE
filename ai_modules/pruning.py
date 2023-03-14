@@ -67,6 +67,7 @@ for table in tables:
 file = open('dictionary/' + str(db) + '.dictionary','rb')
 encodes = pickle.load(file)
 file.close()
+finalResult = {}
 
 def pruning(prompt, model):
   import re
@@ -77,6 +78,7 @@ def pruning(prompt, model):
   keywords = list(sorted(keywords, key=lambda x: x[1], reverse=True))
 
   keywords = list(map(lambda x: x[0], keywords)) 
+  finalResult['keywords'] = keywords
 
   sentence = model.encode(prompt.lower())
   keys = model.encode(' '.join(keywords))
@@ -88,16 +90,25 @@ def pruning(prompt, model):
   import statistics
 
   sims = []
-  encoding = {}
+  #encoding = {}
+  encodedTables = encodes.keys()
+
   for table in tables:
-    if (table not in encodes):
-        print('No training. Please, execute the training using the Designer')
-        exit()
-    encode = encodes[table]
-    encoding[table] = encode
-    sim = 1 - distance.cosine(sentence, encode)
-    sim2 = 1 - distance.cosine(keys, encode)
-    table_sim[table] = (sim + 4 * sim2) / 5
+
+    iEncoding = list(filter(lambda x: table + '$$' in x, encodedTables))
+    if (len(iEncoding) <= 0):
+      print('No training. Please, execute the training using the Designer')
+      exit()
+    maximumLH = 0
+    for encodedTable in iEncoding:
+      encode = encodes[encodedTable]
+      #encoding[table] = encode
+      sim = 1 - distance.cosine(sentence, encode)
+      sim2 = 1 - distance.cosine(keys, encode)
+      lh = (sim + 4 * sim2) / 5
+      if lh > maximumLH:
+        maximumLH = lh
+    table_sim[table] = maximumLH
     sims.append(sim)
 
   avg = statistics.median(sims)
@@ -131,7 +142,7 @@ def pruning(prompt, model):
       update(table, 1)
 
   #print(tables_weights)
-  perc = pow(max(tables_weights.values()), 1.5)
+  perc = 0.75 * max(tables_weights.values())
   #print(perc)
   table_sim2 = list(filter(lambda x: x[1] >= perc, tables_weights.items()))
   items = list(tables_weights.items())
@@ -150,7 +161,10 @@ model = SentenceTransformer('multi-qa-mpnet-base-dot-v1')
 
 [pruningResults, [picked_tables, tables_weights]] = pruning(prompt, model)
 
-finalResult = {}
+
+if len(pruningResults.values()) > 0 and max(pruningResults.values()) < 0.55:
+  finalResult['results'] = []
+  step = 0 
 finalResult['pruning'] = pruningResults
 
 finalResult['jumps'] = []
@@ -232,20 +246,19 @@ if (connection['type'] == 'mssql' and step > 0):
     if (len(filtered) > 0):
       description = filtered[0]['description']
     schema = schema + table + ' (' + description + ')' + ':' + cols[table] + '\n'
-  gpt_prompt = 'SQL Server tables (use LIKE):\n' + schema + '#' + prompt + '\nSELECT'
+  gpt_prompt = 'Use LIKE and description or name columns. Use alias for COUNT, MAX, SUM, MIN, AVG\n\nMSSQL schema:\n' + schema + '#' + prompt + '\nSELECT'
 
   finalResult['gpt_prompt'] = gpt_prompt
 
   if (step > 1):
 
     import openai
-
     openai.api_key = "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"
 
     response = openai.Completion.create(
-      model="gpt-3.5-turbo",
+      model="code-davinci-002",
       prompt=gpt_prompt,
-      temperature=0,
+      temperature=0.2,
       max_tokens=150,
       top_p=1.0,
       frequency_penalty=0.0,
@@ -253,9 +266,15 @@ if (connection['type'] == 'mssql' and step > 0):
       stop=["#", ";"]
     )
 
-    query = ("SELECT " + response['choices'][0]['text']).replace('\\n','').replace('\\r','')
+    response = response['choices'][0]['text']
 
-    query = "select * from ordinedettc where datains >= '2023-01-01'"
+    topper = "top(15) " if 'top' not in response.lower() and 'distinct' not in response.lower() else ''
+    query = ("SELECT " + topper + response).replace('\\n','').replace('\\r','')
+
+    if ('delete' in query or 'update' in query or 'insert' in query or 'drop' in query or 'alter' in query):
+      finalResult['results'] = []
+      step = 2
+    #query = "SELECT top(15)  Cd_Agente1, COUNT(*) as x FROM OrdineTes GROUP BY Cd_Agente1 ORDER BY Cd_Agente1"
     finalResult['query'] = query
 
     if (step > 2):
@@ -272,7 +291,7 @@ if (connection['type'] == 'mssql' and step > 0):
           extractedCols = finalResult['results'][0].keys()
         finalResult['jumps'] = []
         for table in fks.keys():
-          finalResult['jumps'] = finalResult['jumps'] + list(filter(lambda x: x['from'] in extractedCols, fks[table]))
+          finalResult['jumps'] = finalResult['jumps'] + list(filter(lambda x: x['from'] in extractedCols, fks[table]))          
       except:
         finalResult['results'] = []
 

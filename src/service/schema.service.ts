@@ -19,7 +19,7 @@ export async function tagging(id: number) {
     if (errorText) {
         throw new Error('Error tagging schema');
     } else {
-        return JSON.parse(pythonProcess.stdout.toString().trim())
+        return true
     }
 };
 

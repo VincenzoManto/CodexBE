@@ -21,7 +21,8 @@ app.use(helmet());
 app.use(cors());
 
 const errorHandler = (error: any, request: any, response: any, next: any) => {
-  response.sendStatus(500).send(error);
+  response.status(500).send(error);
+  next()
 }
 
 
@@ -45,7 +46,11 @@ app.use(
 app.listen(port, async () => {
   logger.info(`App is running at http://localhost:${port}`);
 
-  routes(app);
+  try {
+    routes(app);
+  } catch (e) {
+
+  }
 
   startMetricsServer();
 

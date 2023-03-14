@@ -5,12 +5,12 @@ export async function execute(id: number, message: string, session: string, step
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
         console.log("error", errorText);
-        pruning(id, message, session, step);
+        return pruning(id, message, session, step);
     } else {
         const dataVis = pythonProcess.stdout.toString().trim(); 
         console.log(dataVis);
         if (!dataVis) {
-            pruning(id, message, session, step);
+            return pruning(id, message, session, step);
         } else {
             const result = {
                 chart: dataVis
@@ -37,18 +37,28 @@ function pruning (id: number, message: string, session: string, step: number = 0
     const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/pruning.py", id.toString(), message, session, step.toString()]);
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
+        console.log(errorText);
         throw new Error('Error tagging schema');
     } else {
         const data = pythonProcess.stdout.toString().trim(); 
         const jsonData = JSON.parse(data);
         if (jsonData.results?.length) {
-            const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/data_summarization.py", session, message]);
-            if (!pythonProcess.stderr.toString().trim()) {
-                jsonData.summarization = pythonProcess.stdout.toString().trim();
+            const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/data_summarization.py", session, JSON.stringify(jsonData.keywords)]);
+
+            let summaryResults;
+        
+            const summarizationErrorText = pythonProcess.stderr?.toString().trim();
+            if (summarizationErrorText) {
+                console.log(summarizationErrorText)
+            } else {
+                summaryResults = JSON.parse(pythonProcess.stdout.toString().trim());
+                jsonData.summarization = summaryResults.text;
             }
             const pythonProcessVis = ChildProcess.spawnSync('python',["ai_modules/data_visualization.py", session, "Show me a chart"]);
             if (!pythonProcessVis.stderr.toString().trim()) {
                 jsonData.chart = pythonProcessVis.stdout.toString().trim();
+            } else {
+                jsonData.chart = summaryResults?.chart;
             }
         }
         return jsonData;

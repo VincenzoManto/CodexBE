@@ -3,7 +3,6 @@ import { getAllDbs, getSchema, setSchema, tagging } from "../service/schema.serv
 
 
 export async function getDbs(req: Request, res: Response) {
-    
     const dbs = await getAllDbs();
   
     return res.send(dbs);
