@@ -13,62 +13,6 @@ from pathlib import Path
 dotenv_path = Path(os.path.abspath(__file__) + '../.env')
 load_dotenv()
 
-
-
-
-db = sys.argv[1]
-if (db == None):
-  raise Exception('No db')
-
-
-mydb = mysql.connector.connect(
-  host=os.getenv("CODEX_DB_HOST"),
-  user=os.getenv("CODEX_DB_USER"),
-  password=os.getenv("CODEX_DB_PASS"),
-  database=os.getenv("CODEX_DB_NAME")
-)
-
-
-prompt = sys.argv[2]
-if (len(sys.argv) > 4):
-  step = int(sys.argv[4]) if sys.argv[4] is not None else 0 # 0 = pruning, 1 = gpt_prompt, 2 = query, 3 = results
-else:
-  step = 0
-session = sys.argv[3]
-if (prompt == None):
-  raise Exception('No prompt')
-
-
-mycursor = mydb.cursor(dictionary=True)
-
-
-mycursor.execute("SELECT * FROM `table` WHERE db = %s", (int(db),))
-
-tables = mycursor.fetchall()
-
-mycursor.execute("SELECT * FROM `connection` WHERE db = %s", (int(db),))
-
-connection = mycursor.fetchall()
-
-schema = []
-edges = {}
-
-for table in tables:
-    if table['description'] != None:
-        name = table['name']
-        local_edges = list(map(lambda x: x['to'], filter(lambda x: x['from'] == name, connection)))
-        if name in edges:
-            edges[name] = edges[name] + local_edges
-        else:
-            edges[name] = local_edges
-        schema.append(name)
-
-
-file = open('dictionary/' + str(db) + '.dictionary','rb')
-encodes = pickle.load(file)
-file.close()
-finalResult = {}
-
 def pruning(prompt, model):
   import re
   import yake
@@ -156,51 +100,59 @@ def pruning(prompt, model):
 
   return [picked_table_names, tables_weights]
 
-from sentence_transformers import SentenceTransformer
-model = SentenceTransformer('multi-qa-mpnet-base-dot-v1')
+def execute(query, cursor):
+  try:
+    finalResult['results'] = []
+    cursor.execute(query)
+    if connection['type'] == 'mysql':
+      cursor = cursor.fetchall()
+    extractedCols = []
+    for row in cursor:
+      for col in row.keys():
+        if not row[col] == None and (not (type(row[col]) == int or type(row[col]) == float)):
+            row[col] = str(row[col])
+      finalResult['results'].append(row)
+    if (len(finalResult['results']) > 0):
+      extractedCols = finalResult['results'][0].keys()
+    finalResult['jumps'] = []
+    if not fks == None or table not in fks:
+      for table in fks.keys():
+        finalResult['jumps'] = finalResult['jumps'] + list(filter(lambda x: x['from'] in extractedCols, fks[table]))          
+  except:
+     finalResult['results'] = []
 
-[pruningResults, [picked_tables, tables_weights]] = pruning(prompt, model)
+def createQueryGPT(gpt_prompt):
+  import openai
+  openai.api_key = "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"
 
+  response = openai.Completion.create(
+    model="code-davinci-002",
+    prompt=gpt_prompt,
+    temperature=0.2,
+    max_tokens=150,
+    top_p=1.0,
+    frequency_penalty=0.0,
+    presence_penalty=0.0,
+    stop=["#", ";"]
+  )
 
-if len(pruningResults.values()) > 0 and max(pruningResults.values()) < 0.55:
-  finalResult['results'] = []
-  step = 0 
-finalResult['pruning'] = pruningResults
+  response = response['choices'][0]['text']
 
-finalResult['jumps'] = []
+  topper = ''
+  limit = ''
+  if connection['type'] == 'mssql':
+    topper = "top(15) " if 'top' not in response.lower() and 'distinct' not in response.lower() else ''
+  elif connection['type'] == 'mysql':
+    limit = " limit 15 " if 'limit' not in response.lower() else ''
+  query = ("SELECT " + topper + response + limit).replace('\\n','').replace('\\r','')
 
-mycursor.execute("SELECT * FROM `db` WHERE id = %s", (int(db),))
+  if ('delete' in query or 'update' in query or 'insert' in query or 'drop' in query or 'alter' in query):
+    finalResult['results'] = []
+    step = 2
+  #query = "SELECT top(15)  Cd_Agente1, COUNT(*) as x FROM OrdineTes GROUP BY Cd_Agente1 ORDER BY Cd_Agente1"
+  finalResult['query'] = query
 
-connection = mycursor.fetchone()
-if (connection['type'] == 'mssql' and step > 0):
-
-  table_names = [("'" + i + "'") for i in picked_tables]
-
-  conn = pymssql.connect(connection['server'], connection['username'], connection['password'], connection['name'])
-  cursor = conn.cursor(as_dict=True)
-
-  cursor.execute("""SELECT distinct	column_name, table_name, data_type, A.REF as ref_table, A.REFCOLNAME as ref_column FROM
-  INFORMATION_SCHEMA.COLUMNS
-  left join (SELECT
-  OBJECT_NAME(parent_object_id) PARENT,
-  c.NAME COLNAME,
-  OBJECT_NAME(referenced_object_id) REF,
-  cref.NAME REFCOLNAME
-  FROM
-  sys.foreign_key_columns fkc
-  INNER JOIN
-  sys.columns c
-    ON fkc.parent_column_id = c.column_id
-        AND fkc.parent_object_id = c.object_id
-  INNER JOIN
-  sys.columns cref
-    ON fkc.referenced_column_id = cref.column_id
-        AND fkc.referenced_object_id = cref.object_id ) A on PARENT = table_name and COLNAME = column_name
-      where 
-      table_name in (""" + ','.join(table_names) + """)
-      order by TABLE_NAMe
-  """)
-
+def createPromptGPT():
   mycursor = mydb.cursor(dictionary=True)
 
   mycursor.execute("SELECT * FROM `table` WHERE db = %s", (int(db),))
@@ -217,8 +169,6 @@ if (connection['type'] == 'mssql' and step > 0):
     metaColumns = list(map(lambda x: x['name'], metaColumns))
 
   tagged_table_names = list(map(lambda x: x['name'], tables))
-
-  fks = {}
 
   cols = {}
   for row in cursor:
@@ -246,74 +196,207 @@ if (connection['type'] == 'mssql' and step > 0):
     if (len(filtered) > 0):
       description = filtered[0]['description']
     schema = schema + table + ' (' + description + ')' + ':' + cols[table] + '\n'
-  gpt_prompt = 'Use LIKE and description or name columns. Use alias for COUNT, MAX, SUM, MIN, AVG\n\nMSSQL schema:\n' + schema + '#' + prompt + '\nSELECT'
+  gpt_prompt = 'Use LIKE and description or name columns. Use alias for COUNT, MAX, SUM, MIN, AVG\n\n' + connection['type'] + ' schema:\n' + schema + '#last query:' + lastQuery + '\n#new prompt:' + prompt + '\nSELECT'
 
   finalResult['gpt_prompt'] = gpt_prompt
 
-  if (step > 1):
-
-    import openai
-    openai.api_key = "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"
-
-    response = openai.Completion.create(
-      model="code-davinci-002",
-      prompt=gpt_prompt,
-      temperature=0.2,
-      max_tokens=150,
-      top_p=1.0,
-      frequency_penalty=0.0,
-      presence_penalty=0.0,
-      stop=["#", ";"]
-    )
-
-    response = response['choices'][0]['text']
-
-    topper = "top(15) " if 'top' not in response.lower() and 'distinct' not in response.lower() else ''
-    query = ("SELECT " + topper + response).replace('\\n','').replace('\\r','')
-
-    if ('delete' in query or 'update' in query or 'insert' in query or 'drop' in query or 'alter' in query):
-      finalResult['results'] = []
-      step = 2
-    #query = "SELECT top(15)  Cd_Agente1, COUNT(*) as x FROM OrdineTes GROUP BY Cd_Agente1 ORDER BY Cd_Agente1"
-    finalResult['query'] = query
-
-    if (step > 2):
-      try:
-        finalResult['results'] = []
-        cursor.execute(query)
-        extractedCols = []
-        for row in cursor:
-          for col in row.keys():
-            if not row[col] == None and (not (type(row[col]) == int or type(row[col]) == float)):
-               row[col] = str(row[col])
-          finalResult['results'].append(row)
-        if (len(finalResult['results']) > 0):
-          extractedCols = finalResult['results'][0].keys()
-        finalResult['jumps'] = []
-        for table in fks.keys():
-          finalResult['jumps'] = finalResult['jumps'] + list(filter(lambda x: x['from'] in extractedCols, fks[table]))          
-      except:
-        finalResult['results'] = []
+def createPromptGPTSSQL(cursor):
+  table_names = [("'" + i + "'") for i in picked_tables]
 
 
-jumpableTables = set(map(lambda x: x['to_table'], finalResult['jumps']))
-newFks = []
-for jump in jumpableTables:
-  fks = list(filter(lambda x: x['to_table'] in jump, finalResult['jumps']))
-  fk = {}
-  fk['to_table'] = jump
-  fk['from'] = fks[0]['from']
-  fk['to'] = fks[0]['to']
-  for nfk in fks:
-      if (nfk['from'] not in fk['from']):
-        fk['from'] = fk['from'] + '|' + nfk['from']
-        fk['to'] = fk['to'] + '|' + nfk['to']
-  fk['to_table_alias'] = fks[0]['to_table_alias']
-  newFks.append(fk)
-finalResult['jumps'] = newFks
-if 'results' in finalResult:
-  value = json.dumps(finalResult['results'])
-  with open('temp/' + session, 'w') as f:
-      f.write(value)
-print(json.dumps(finalResult))
-sys.stdout.flush()
+
+  cursor.execute("""SELECT distinct	column_name, table_name, data_type, A.REF as ref_table, A.REFCOLNAME as ref_column FROM
+  INFORMATION_SCHEMA.COLUMNS
+  left join (SELECT
+  OBJECT_NAME(parent_object_id) PARENT,
+  c.NAME COLNAME,
+  OBJECT_NAME(referenced_object_id) REF,
+  cref.NAME REFCOLNAME
+  FROM
+  sys.foreign_key_columns fkc
+  INNER JOIN
+  sys.columns c
+    ON fkc.parent_column_id = c.column_id
+        AND fkc.parent_object_id = c.object_id
+  INNER JOIN
+  sys.columns cref
+    ON fkc.referenced_column_id = cref.column_id
+        AND fkc.referenced_object_id = cref.object_id ) A on PARENT = table_name and COLNAME = column_name
+      where 
+      table_name in (""" + ','.join(table_names) + """) and TABLE_SCHEMA = '""" + connection['name'] + """' 
+      order by TABLE_NAMe
+  """)
+
+  createPromptGPT()
+
+def createPromptGPTMYSQL(cursor):
+  table_names = [("'" + i + "'") for i in picked_tables]
+
+
+
+  cursor.execute("""SELECT distinct column_name, table_name, data_type, A.ref as ref_table, A.RECOLNAME as ref_column FROM information_schema.COLUMNS 
+    left join (select   c.REFERENCED_TABLE_NAME as REF,
+      c.COLUMN_NAME as COLNAME,
+      c.REFERENCED_COLUMN_NAME as RECOLNAME,
+      c.TABLE_NAME as PARENT
+      FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE c
+    ) A on PARENT = table_name and COLNAME = column_name and REF is not null
+    WHERE table_name in (""" + ','.join(table_names) + """) and TABLE_SCHEMA = '""" + connection['name'] + """' 
+      order by TABLE_NAMe
+  """)
+  createPromptGPT()
+
+def finalize():    
+  if 'jumps' not in finalResult:
+    finalResult['jumps'] = []
+  jumpableTables = set(map(lambda x: x['to_table'], finalResult['jumps']))
+  newFks = []
+  for jump in jumpableTables:
+    fks = list(filter(lambda x: x['to_table'] in jump, finalResult['jumps']))
+    fk = {}
+    fk['to_table'] = jump
+    fk['from'] = fks[0]['from']
+    fk['to'] = fks[0]['to']
+    for nfk in fks:
+        if (nfk['from'] not in fk['from']):
+          fk['from'] = fk['from'] + '|' + nfk['from']
+          fk['to'] = fk['to'] + '|' + nfk['to']
+    fk['to_table_alias'] = fks[0]['to_table_alias']
+    newFks.append(fk)
+  finalResult['jumps'] = newFks
+  if 'results' in finalResult:
+    value = json.dumps(finalResult['results'])
+    with open('temp/' + session, 'w') as f:
+        f.write(value)
+  print(json.dumps(finalResult))
+  sys.stdout.flush()
+
+db = sys.argv[1]
+if (db == None):
+  raise Exception('No db')
+
+
+mydb = mysql.connector.connect(
+  host=os.getenv("CODEX_DB_HOST"),
+  user=os.getenv("CODEX_DB_USER"),
+  password=os.getenv("CODEX_DB_PASS"),
+  database=os.getenv("CODEX_DB_NAME")
+)
+
+
+prompt = sys.argv[2]
+
+if (len(sys.argv) > 4):
+  step = int(sys.argv[4]) if sys.argv[4] is not None else 0 # 0 = pruning, 1 = gpt_prompt, 2 = query, 3 = results
+else:
+  step = 0
+session = sys.argv[3]
+if (prompt == None):
+  raise Exception('No prompt')
+
+
+mycursor = mydb.cursor(dictionary=True)
+
+fks = {}
+
+mycursor.execute("SELECT * FROM `table` WHERE db = %s", (int(db),))
+
+tables = mycursor.fetchall()
+
+mycursor.execute("SELECT * FROM `db` WHERE id = %s", (int(db),))
+
+connection = mycursor.fetchone()
+
+if connection['type'] == 'mssql':
+  conn = pymssql.connect(connection['server'], connection['username'], connection['password'], connection['name'])
+  cursor = conn.cursor(as_dict=True)
+elif connection['type'] == 'mysql':
+  conn = mysql.connector.connect(
+    host=connection['server'],
+    user=connection['username'],
+    password=connection['password'],
+    database=connection['name']
+  )
+  cursor = conn.cursor(dictionary=True)
+
+mycursor.execute("SELECT query FROM `log` WHERE db = %s and prompt = %s and query <> '' order by timestamp desc", (int(db), prompt,))
+
+queries = mycursor.fetchall()
+
+mycursor.execute("SELECT query FROM `log` WHERE db = %s and session = %s and query <> '' order by timestamp desc limit 1", (int(db), session,))
+
+last = mycursor.fetchone()
+lastQuery = last['query'] if not last == None else ''
+
+
+
+finalResult = {}
+
+if len(queries) > 0:
+  import yake
+  prompt = prompt.replace('-', ' ')
+  kw_extractor = yake.KeywordExtractor(top=10, stopwords=None)
+  keywords = kw_extractor.extract_keywords(prompt)
+  keywords = list(sorted(keywords, key=lambda x: x[1], reverse=True))
+
+  keywords = list(map(lambda x: x[0], keywords)) 
+  finalResult['keywords'] = keywords
+  execute(queries[0]['query'], cursor)
+  finalResult['query'] = queries[0]['query']
+  finalize()
+  exit()
+
+mycursor.execute("SELECT * FROM `connection` WHERE id = %s", (int(db),))
+
+connections = mycursor.fetchall()
+schema = []
+edges = {}
+fks = {}
+
+for table in tables:
+  if table['description'] != None:
+      name = table['name']
+      local_edges = list(map(lambda x: x['to'], filter(lambda x: x['from'] == name, connections)))
+      if name in edges:
+          edges[name] = edges[name] + local_edges
+      else:
+          edges[name] = local_edges
+      schema.append(name)
+
+
+file = open('dictionary/' + str(db) + '.dictionary','rb')
+encodes = pickle.load(file)
+file.close()
+
+
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer('multi-qa-mpnet-base-dot-v1')
+
+[pruningResults, [picked_tables, tables_weights]] = pruning(prompt, model)
+
+'''if len(pruningResults.values()) > 0 and max(pruningResults.values()) < 0.55:
+  finalResult['results'] = []
+  step = 0 
+'''
+finalResult['pruning'] = pruningResults
+
+finalResult['jumps'] = []
+
+
+if (connection['type'] == 'mssql' and step > 0):
+
+  createPromptGPTSSQL(cursor)
+
+if (connection['type'] == 'mysql' and step > 0):
+
+  createPromptGPTMYSQL(cursor)
+
+if (step > 1):
+
+  createQueryGPT(finalResult['gpt_prompt'])
+
+  if (step > 2):
+    execute(finalResult['query'], cursor)
+
+finalize()
+

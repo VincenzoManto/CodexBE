@@ -18,13 +18,12 @@ data = pd.read_json(data_url, convert_dates=True)
 stat = data.describe()
 
 sentences = {
-    "relevant": "A semantic significant dimension can be column [x]",
-    "date": "A temporal placement is column [x]",
-    "column_analysis": "A column statistically interesting is [x] with variance of [std].\n\tIt ranges from [min] ([argmin]) to [max] ([argmax]), with a mean of [mean]",
-    "unrelevant_low": "There exists some unrelevant dimensions",
-    "unrelevant_zero": "All the dimensions seems to be relevant and valued",
-    "unrelevant_high": "A lot of columns appears to be unrelevant",
-    "count": "For this extraction, total number of records is [count]"
+    "relevant": "\nA semantic significant dimension can be column [x]",
+    "column_analysis": "\nA column statistically interesting is [x] with variance of [std].\n\tIt ranges from [min] ([argmin]) to [max] ([argmax]), with a mean of [mean]",
+    "unrelevant_low": "\nThere exists some unrelevant dimensions",
+    "unrelevant_zero": "\nAll the dimensions seems to be relevant and valued",
+    "unrelevant_high": "\nA lot of columns appears to be unrelevant",
+    "count": "\nFor this extraction, total number of records is [count]"
 }
 
 total_length = len(data. index)
@@ -43,10 +42,6 @@ for col in data:
     dateColumn = col
 if len(relevant) > 0:
   sentences['relevant'] = sentences['relevant'].replace('[x]', relevant[0])
-if dateColumn is not None:
-  sentences['date'] = sentences['date'].replace('[x]', dateColumn)
-else:
-  sentences['date'] = ''
 
 
 restat = {
@@ -74,34 +69,37 @@ if dateColumn is not None:
   if restat['std'] is not None:
     chart = alt.Chart(data).mark_line() if random.random() > 0.5 else alt.Chart(data).mark_bar()
     script = chart.encode(
-      x=dateColumn + ':date',
+      x=dateColumn + ':T',
       y=restat['std'] + ":Q").to_html()
   elif len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number):
     script = alt.Chart(data).mark_line().encode(
-      x=dateColumn + ':date',
+      x=dateColumn + ':T',
       y=relevant[0] + ":Q").to_html()
   elif len(relevant) > 0:
     script = alt.Chart(data).mark_bar().encode(
-      x=dateColumn + ':date',
+      x=dateColumn + ':T',
       y=relevant[0] + ":O").to_html()
     # text + date = barchart
 else:
   if restat['std'] is not None:
-    if (len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number)):
+    relevantId = 0
+    while relevantId < len(relevant) and restat['std'] == relevant[relevantId]:
+      relevantId = relevantId + 1
+    if (len(relevant) > 0 and isinstance(firstRow[relevant[relevantId]], numbers.Number)):
       chart = alt.Chart(data).mark_line() if random.random() > 0.5 else alt.Chart(data).mark_point()
       script = chart.encode(
         x=restat['std'] + ':Q',
-        y=relevant[0] + ":Q").to_html()
+        y=relevant[relevantId] + ":Q").to_html()
       # quantitative + quantitative = line
     elif len(relevant) > 0:
       if random.random() > 0.5:
         script = alt.Chart(data).mark_bar().encode(
-          x=relevant[0] + ':O',
+          x=relevant[relevantId] + ':O',
           y=restat['std'] + ":Q").to_html()
       else:
         script = alt.Chart(data).mark_arc().encode(
           theta=alt.Theta(field=restat['std'], type="quantitative"),
-          color=alt.Color(field=relevant[0], type="nominal")).to_html()
+          color=alt.Color(field=relevant[relevantId], type="nominal")).to_html()
       # text + quantitative = bar or pie
   elif (len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number)):
     if (len(relevant) > 1 and isinstance(firstRow[relevant[1]], numbers.Number)):
@@ -135,44 +133,47 @@ newData = data[list(filter(lambda x: x not in unrelevant,[col for col in data]))
 
 from scipy import stats
 colData = {}
-for col in newData:
-  uniques = pd.unique(newData[col])
-  mode = stats.mode(newData[col])
+if total_length > 1:
+  for col in newData:
+    uniques = pd.unique(newData[col])
+    mode = stats.mode(newData[col])
 
-  perc = mode.count[0] / total_length
-  if perc > 0.5:
-    if perc > 0.9:
-      agg = "The totality"
-    elif perc > 0.8:
-      agg = "The large majority"
-    elif perc > 0.7:
-      agg = "The majority"
-    elif perc > 0.6:
-      agg = "The large part"
+    perc = mode.count[0] / total_length
+    if perc > 0.5:
+      if perc > 0.9:
+        agg = "the totality"
+      elif perc > 0.8:
+        agg = "the large majority"
+      elif perc > 0.7:
+        agg = "the majority"
+      elif perc > 0.6:
+        agg = "the large part"
+      else:
+        agg = "the sensible part"
+      if mode.mode[0] == None or mode.mode[0] == 'nan':
+        quantifier = "empty"
+      else:
+        quantifier = "are equal to " + str(mode.mode[0])
+      colData[col] = agg + " of the results " + quantifier + " for about " + str(mode.count[0]) + " results."
+      if len(list(set(uniques) - set([mode.mode[0]]))) > 0:
+        colData[col] = colData[col] + "The remaining elements are " + ', '.join(map(str,list(set(uniques) - set([mode.mode[0]]))))
     else:
-      agg = "The sensible part"
-    if mode.mode[0] == None or mode.mode[0] == 'nan':
-      quantifier = "empty"
-    else:
-      quantifier = "are equal to " + str(mode.mode[0])
-    colData[col] = agg + " of the results " + quantifier + " for about " + str(mode.count[0]) + " results. The remaining elements are " + ', '.join(map(str,list(set(uniques) - set([mode.mode[0]]))))
-  else:
-    if perc > 0.4:
-      agg = "a good part"
-    elif perc > 0.3:
-      agg = "a considerable part"
-    elif perc > 0.2:
-      agg = "a small part"
-    elif perc > 0.1:
-      agg = "a minority"
-    else:
-      colData[col] = "The heterogeneity is extremely high"
-      continue
-    if mode.mode[0] == None or mode.mode[0] == 'nan':
-      quantifier = "empty"
-    else:
-      quantifier = "are equal to " + str(mode.mode[0])
-    colData[col] = agg + " of the results " + quantifier + " for about "  + str(mode.count[0]) + " results, but a large intracolumn diversity is appreciable"
+      if perc > 0.4:
+        agg = "a good part"
+      elif perc > 0.3:
+        agg = "a considerable part"
+      elif perc > 0.2:
+        agg = "a small part"
+      elif perc > 0.1:
+        agg = "a minority"
+      else:
+        colData[col] = "The heterogeneity is extremely high"
+        continue
+      if mode.mode[0] == None or mode.mode[0] == 'nan':
+        quantifier = "empty"
+      else:
+        quantifier = "are equal to " + str(mode.mode[0])
+      colData[col] = agg + " of the results " + quantifier + " for about "  + str(mode.count[0]) + " results, but a large intracolumn diversity is appreciable"
 
 
 new_dict = {}
@@ -198,10 +199,34 @@ for key in colData.keys():
   if key not in x:
     colText = colText + wrt[round(random.random() * (len(wrt) - 1))] + key + ", " + colData[key] + "\n"
 
+pretext = ""
+if len(data) == 1:
+  keys = firstRow.keys()
+  if len(keys) == 2:
+    pretext = "It's " + str(firstRow[keys[0]]) + " with " + str(firstRow[keys[1]])
+  elif len(keys) == 1:
+    pretext = "It's " + str(firstRow[keys[0]])
+  else:
+    pretext = "I found a " + keywords[0] + " with "
+    keyIndex = 0
+    for key in keys:
+      connector = " " if random.random() > 0.5 else " equals to "
+      pretext = pretext + str(key) + connector + str(firstRow[key]) + (", " if keyIndex < len(keys) - 1 else '')
+      keyIndex = keyIndex + 1
+
+
+uniqueKeywords = []
+for key in keywords:
+  uniqueKeywords = uniqueKeywords + key.split(' ')
+
+uniqueKeywords = pd.unique(uniqueKeywords)
+
 sentences['count'] = sentences['count'].replace('[count]', str(total_length))
-text = "The data refers to " + ','.join(keywords) + '\n' + sentences['count'] + '\n' + sentences['unrelevant'] + '\n' + sentences['relevant'] + '\n' + sentences['column_analysis'] + '\n' + sentences['date'] + '\n' + colText
+text = "The data refers to " + ','.join(uniqueKeywords) + sentences['count'] + sentences['unrelevant'] + sentences['relevant'] + sentences['column_analysis'] + '\n' + colText
 finalResult = {
+  "pretext": pretext,
   "text": text,
-  "chart": script
+  "chart": script,
+  "unrelevant": unrelevant
 }
 print(json.dumps(finalResult))
