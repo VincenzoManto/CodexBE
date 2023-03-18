@@ -24,7 +24,9 @@ export async function tagging(id: number) {
 };
 
 export async function getAllDbs() {
-    return await dbMeta.Db.findAll();
+    return await dbMeta.Db.findAll({
+        attributes: ['id', 'name']
+    });
 };
 
 export async function setSchema(tables: Array<any>) {
@@ -58,7 +60,8 @@ export async function setSchema(tables: Array<any>) {
             console.log('Update ' + row.id);
             await dbMeta.Table.update(
                 {
-                    description: row.description
+                    description: row.description,
+                    fullname: row.fullname
                 },
                 {
                 where: { id: row.id },

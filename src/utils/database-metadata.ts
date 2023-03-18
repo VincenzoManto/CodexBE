@@ -9,6 +9,30 @@ const sequelize = new Sequelize(process.env.CODEX_DB_NAME || 'codex',
                                 });
 
 
+const Log = sequelize.define('log', {
+    id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        autoIncrement: true,
+        primaryKey: true
+    },
+    prompt: {
+        type: Sequelize.STRING,
+        allowNull: false
+    },
+    query: {
+        type: Sequelize.STRING,
+        allowNull: false
+    },
+    db: {
+        type: Sequelize.INTEGER,
+        allowNull: false
+    },
+    session: {
+        type: Sequelize.STRING,
+        allowNull: false
+    }
+}, { timestamps: false, freezeTableName: true});
 
 const Table = sequelize.define('table', {
     id: {
@@ -18,6 +42,10 @@ const Table = sequelize.define('table', {
         primaryKey: true
     },
     name: {
+        type: Sequelize.STRING,
+        allowNull: false
+    },
+    fullname: {
         type: Sequelize.STRING,
         allowNull: false
     },
@@ -157,5 +185,6 @@ export default {
     Db: Db,
     Connection: Connection,
     Table: Table,
-    Columns: Columns
+    Columns: Columns,
+    Log: Log
 };

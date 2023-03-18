@@ -20,13 +20,8 @@ app.use(express.json());
 app.use(helmet());
 app.use(cors());
 
-const errorHandler = (error: any, request: any, response: any, next: any) => {
-  response.status(500).send(error);
-  next()
-}
 
 
-app.use(errorHandler)
 
 app.use(
   responseTime((req: Request, res: Response, time: number) => {
@@ -46,11 +41,7 @@ app.use(
 app.listen(port, async () => {
   logger.info(`App is running at http://localhost:${port}`);
 
-  try {
-    routes(app);
-  } catch (e) {
-
-  }
+  routes(app);
 
   startMetricsServer();
 
