@@ -9,6 +9,8 @@ import sys
 import os
 from dotenv import load_dotenv
 from pathlib import Path
+from sentence_transformers import SentenceTransformer
+
 
 dotenv_path = Path(os.path.abspath(__file__) + '../.env')
 load_dotenv()
