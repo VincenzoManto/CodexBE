@@ -1,12 +1,13 @@
 
 import pickle
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
 import pymssql
 import json
 import sys
 import mysql.connector
 import sys
-import os
 from dotenv import load_dotenv
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
@@ -268,7 +269,7 @@ def finalize():
   finalResult['jumps'] = newFks
   if 'results' in finalResult:
     value = json.dumps(finalResult['results'])
-    with open('temp/' + session, 'w') as f:
+    with open(os.path.dirname(__file__) + '\\..\\temp\\' + session, 'w') as f:
         f.write(value)
   print(json.dumps(finalResult))
   sys.stdout.flush()
@@ -345,6 +346,7 @@ if len(queries) > 0:
   finalResult['keywords'] = keywords
   execute(queries[0]['query'], cursor)
   finalResult['query'] = queries[0]['query']
+  finalResult['cached'] = True
   finalize()
   exit()
 
