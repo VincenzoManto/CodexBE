@@ -1,10 +1,10 @@
 import { Express, Request, Response } from "express";
-import { divingHandler, executionHandler } from "./controller/execution.controller";
+import { createDashboardHandler, divingHandler, executionHandler } from "./controller/execution.controller";
 import { getDbs, getSchemaHandler, setSchemaHandler, taggingHandler } from "./controller/schema.controller";
 import fs from 'fs';
 
 
-function routes(app: Express) {
+function routes(app: Express, dashboardProcess: any) {
   /**
    * @openapi
    * /healthcheck:
@@ -174,7 +174,10 @@ function routes(app: Express) {
    */
   app.post('/api/navigate/:id/:session', divingHandler);
 
+  app.post('/api/dashboard/:id', async (req, res, next) => createDashboardHandler(req, res, next, dashboardProcess));
+
   app.use( (error: any, request: any, response: any, next: any) => {
+    console.error(error);
     response.status(500).send(error);
   })
 }

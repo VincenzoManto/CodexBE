@@ -1,6 +1,6 @@
 import * as ChildProcess from 'child_process';
 import _ from 'lodash';
-import dbMeta from './../utils/database-metadata';
+import DbMeta from '../utils/database-metadata';
 
 
 export async function getSchema(id: number, seek: string) {
@@ -24,7 +24,7 @@ export async function tagging(id: number) {
 };
 
 export async function getAllDbs() {
-    return await dbMeta.Db.findAll({
+    return await DbMeta.getInstance().Db.findAll({
         attributes: ['id', 'name']
     });
 };
@@ -34,7 +34,7 @@ export async function setSchema(tables: Array<any>) {
         const toInsert = _.cloneDeep(tables.filter(e => e.id === 0 && e.name));
         toInsert.forEach(e => {delete e.id; delete e.columns});
         if (toInsert?.length) {
-            const rows = await dbMeta.Table.bulkCreate(
+            const rows = await DbMeta.getInstance().Table.bulkCreate(
                 toInsert,  {returning: true}
             );
             for (const row of rows) {
@@ -42,7 +42,7 @@ export async function setSchema(tables: Array<any>) {
                 if (columns?.length) {
                     for (const column of columns) {
                         if (column.description) {
-                            await dbMeta.Columns.create(
+                            await DbMeta.getInstance().Columns.create(
                             {                                    
                                 table: row.id,
                                 name: column.name,
@@ -58,7 +58,7 @@ export async function setSchema(tables: Array<any>) {
         const toUpdate = tables.filter(e => e.id);
         for (const row of toUpdate) {
             console.log('Update ' + row.id);
-            await dbMeta.Table.update(
+            await DbMeta.getInstance().Table.update(
                 {
                     description: row.description,
                     fullname: row.fullname
@@ -71,7 +71,7 @@ export async function setSchema(tables: Array<any>) {
             if (row.columns?.length) {
                 for (const column of row.columns) {
                     if (column.description) {
-                        const [found, created] = await dbMeta.Columns.findOrCreate(
+                        const [found, created] = await DbMeta.getInstance().Columns.findOrCreate(
                             {
                                 where: {id: column.id},
                                 defaults: {

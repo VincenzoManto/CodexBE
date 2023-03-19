@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 dotenv.config();
-import config from 'config';
+import * as fs from 'fs';
 import responseTime from 'response-time';
 import logger from './utils/logger';
 import routes from './routes';
@@ -9,6 +9,10 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { restResponseTimeHistogram, startMetricsServer } from './utils/metrics';
 import swaggerDocs from './utils/swagger';
+import * as ChildProcess from 'child_process';
+import path from 'path';
+import dbMeta from './utils/database-metadata';
+import DbMeta from './utils/database-metadata';
 
 const port = +(process.env.CODEX_BE_PORT || 3000);
 
@@ -38,10 +42,30 @@ app.use(
   })
 );
 
+const dashboardProcess = ChildProcess.spawn('python',["ai_modules/dashboard.py"]);
+dashboardProcess.stderr.on('data', (data) => {
+  console.log(data.toString());
+});
+
+fs.readdir('./temp', (err: any, files: any) => {
+  if (err) throw err;
+
+  const toDelete = files.filter((e: any, i: number) => i < 10);
+  for (const file of toDelete) {
+    fs.unlink(path.join('./temp', file), (err: any) => {
+      if (err) throw err;
+    });
+  }
+});
+
+DbMeta.getInstance();
+
 app.listen(port, async () => {
+
+
   logger.info(`App is running at http://localhost:${port}`);
 
-  routes(app);
+  routes(app, dashboardProcess);
 
   startMetricsServer();
 
