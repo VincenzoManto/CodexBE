@@ -1,18 +1,19 @@
 import * as ChildProcess from 'child_process';
-import dbMeta from './../utils/database-metadata';
+import { Op, Sequelize } from 'sequelize';
+import DbMeta from '../utils/database-metadata';
 
 
-export async function execute(id: number, message: string, session: string, step: number = 0) {
+export async function execute(id: number, message: string, session: string, next: any, step: number = 0) {
     const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/data_visualization.py", session, message]);
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
         console.log("No DV");
-        return pruning(id, message, session, step);
+        return pruning(id, message, session, step, next);
     } else {
         const dataVis = pythonProcess.stdout.toString().trim(); 
         console.log(dataVis);
         if (!dataVis) {
-            return pruning(id, message, session, step);
+            return pruning(id, message, session, step, next);
         } else {
             const result = {
                 chart: dataVis
@@ -47,7 +48,7 @@ export async function diving(id: number, body: any, session: string) {
                 }
             });
         }
-        dbMeta.Log.create(
+        DbMeta.getInstance().Log.create(
             {
                 prompt: '%%NAVIGATE%%',
                 query: data.query || '',
@@ -60,7 +61,7 @@ export async function diving(id: number, body: any, session: string) {
     
 };
 
-function pruning (id: number, message: string, session: string, step: number = 0) {
+function pruning (id: number, message: string, session: string, step: number = 0, next: any) {
     console.log("Start pruning");
     const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/pruning.py", id.toString(), message, session, step.toString()]);
     const errorText = pythonProcess.stderr.toString().trim();
@@ -96,14 +97,34 @@ function pruning (id: number, message: string, session: string, step: number = 0
                 jsonData.chart = summaryResults?.chart;
             }
         }
-        dbMeta.Log.create(
+        DbMeta.getInstance().Log.create(
             {
                 prompt: message,
                 query: jsonData.query || '',
                 db: id,
                 session: session
             }
-        );
+        ).catch((err: any) => next(err));
         return jsonData;
     }
+}
+
+export async function createDashboard(db: number, obj: string) {
+    if (obj.charAt(obj.length - 1) === 's') {
+        obj = obj.substring(0, obj.length - 1);
+    }
+    const queries = await DbMeta.getInstance().Log.findAll({
+        order: [
+            ['timestamp', 'desc']
+        ],        
+        limit: 4,
+        where: {
+            db: db,
+            prompt: {
+                [Op.like]: '%' + obj + '%'
+            }
+        },
+        attributes: [Sequelize.fn('DISTINCT', Sequelize.col('prompt')) ,'prompt'],
+    });
+    return queries;
 }
