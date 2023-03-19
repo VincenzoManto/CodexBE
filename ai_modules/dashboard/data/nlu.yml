@@ -1,0 +1,66 @@
+nlu:
+- intent: add
+  examples: |
+    - add [large](size) column 
+    - insert [medium](size) column
+    - insert [large](size) block
+    - add [small](size) block
+    - can you add me a column
+    - can you insert a block
+    - add a [tiny](size) card
+
+- intent: modify
+  examples: |
+    - Can you make the [first](CARDINAL) column [wider](action)?            
+    - Can you [wide](action) the [third](CARDINAL) column?
+    - [enlarge](action) the column [3](CARDINAL)?
+    - [reduce](action) the [last](CARDINAL) box?
+    - Can you make the [1](CARDINAL)° column [smaller](action)?   
+- intent: delete
+  examples: |
+    - Can you delete the [first](CARDINAL) column?            
+    - Can you remove the  [third](CARDINAL) column?
+    - Remove the column [3](CARDINAL)?
+    - Delete the [last](CARDINAL) box?
+    - Can you drop the [1](CARDINAL)° column?   
+- intent: create
+  examples: |
+    - create me a dashboard about [grades](obj)            
+    - can you generate me a dashboard on [student](obj)
+    - give me a page about [orders](obj)
+    - dashboard referred to [colors](obj)
+- synonym: large
+  examples: |
+    - wider
+    - wide
+    - huge
+    - large
+    - great
+    - big
+    - massive
+    - broad  
+- synonym: small
+  examples: |
+    - smaller
+    - small
+    - little
+    - compact
+    - tiny
+    - mini
+- synonym: medium
+  examples: |
+    - medium
+    - normal
+    - medium-sized
+    - standard
+- synonym: column
+  examples: |
+    - column
+    - col
+    - box
+    - card
+    - kpi
+    - chart
+    - graph
+    - table
+    - extraction
