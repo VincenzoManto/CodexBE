@@ -3,3 +3,4 @@ node_modules
 build
 temp
 ai_modules/data
+ai_modules/dashboard/.rasa
