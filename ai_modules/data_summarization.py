@@ -1,15 +1,16 @@
 import warnings
 warnings.filterwarnings("ignore")
 import pandas as pd
-import random
+import os
 
 import sys
 from os.path import exists
 import math
+import random
 import json
 
-# Initializing NL4DV with a Housing Dataset
-data_url = "temp/" + sys.argv[1]
+
+data_url = os.path.dirname(__file__) + '\\..\\temp\\' + sys.argv[1]
 keywords = json.loads(sys.argv[2])
 
 if (not exists(data_url)):
@@ -31,9 +32,20 @@ relevant = []
 unrelevant = []
 import datetime
 
+countryInfo = pd.read_json(
+  'https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/master/all/all.json'
+)
+
+countryNames = list(countryInfo['name'])
+countryA2 = list(countryInfo['alpha-2'])
+countryA3 = list(countryInfo['alpha-3'])
+
+mapColumn = None
 dateColumn = None
 for col in data:
   uniques = pd.unique(data[col])
+  if data[col][0] in countryNames or data[col][0] in countryA2 or data[col][0] in countryA3:
+    mapColumn = col
   if len(uniques) > 0.75 * total_length:
     relevant.append(col)
   if len(list(filter(lambda x: str(x) not in str([None, 'nan', 'NaN', 0]), uniques))) == 0:
@@ -65,18 +77,60 @@ import numbers
 import altair as alt
 firstRow = data.iloc[0]
 script = None
-if dateColumn is not None:
+if mapColumn is not None and total_length > 0:
+  from vega_datasets import data as vegaDT
+  relevantId = 0
+  while relevantId < len(relevant) - 1 and mapColumn == relevant[relevantId]:
+    relevantId = relevantId + 1
+  if mapColumn == relevant[relevantId]:
+    relevantId = 0
+    keys = firstRow.keys()
+    while relevantId < len(keys) - 1 and mapColumn == keys[relevantId]:
+      relevantId = relevantId + 1
+    value = keys[relevantId]
+  else:
+    value = relevant[relevantId]
+
+  value = value.replace('(','').replace(')','')
+  geoData = data
+  geoData.columns = geoData.columns.str.replace(r"[()]", "")
+  geoData['codex_country_code'] = 0
+  newData = geoData.reset_index()
+  for index, row in geoData.iterrows():
+    x = row[mapColumn]
+    country = countryInfo[(countryInfo['name'] == x) | (countryInfo['alpha-2'] == x) | (countryInfo['alpha-3'] == x)]
+    if len(country['country-code'].values) > 0:
+      geoData.at[index, 'codex_country_code'] = country['country-code'].values[0]
+    geoData.at[index, 'id'] = int(index)
+
+  df = geoData[['id', 'codex_country_code', value]]
+
+  countries = alt.topo_feature(vegaDT.world_110m.url, 'countries')
+
+  script = (alt.Chart(countries).mark_geoshape(fill='lightgray')\
+    .project('equirectangular')\
+    .properties(
+        width=400,
+        height=300
+    ) + alt.Chart(countries).mark_geoshape()\
+    .encode(color=alt.Color(value + ':Q'))\
+    .transform_lookup(
+        lookup='id',
+        from_=alt.LookupData(df, key='codex_country_code', fields=[value])
+    )\
+    .project('equirectangular')).to_html()
+elif dateColumn is not None:
   if restat['std'] is not None:
-    chart = alt.Chart(data).mark_line() if random.random() > 0.5 else alt.Chart(data).mark_bar()
+    chart = alt.Chart(data).mark_area(interpolate = 'basis', color = '#007bff') if random.random() > 0.5 else alt.Chart(data).mark_bar(color = '#007bff')
     script = chart.encode(
       x=dateColumn + ':T',
       y=restat['std'] + ":Q").to_html()
   elif len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number):
-    script = alt.Chart(data).mark_line().encode(
+    script = alt.Chart(data).mark_area(interpolate = 'basis', color = '#007bff').encode(
       x=dateColumn + ':T',
       y=relevant[0] + ":Q").to_html()
   elif len(relevant) > 0:
-    script = alt.Chart(data).mark_bar().encode(
+    script = alt.Chart(data).mark_bar(color = '#007bff').encode(
       x=dateColumn + ':T',
       y=relevant[0] + ":O").to_html()
     # text + date = barchart
@@ -86,14 +140,14 @@ else:
     while relevantId < len(relevant) and restat['std'] == relevant[relevantId]:
       relevantId = relevantId + 1
     if (len(relevant) > 0 and isinstance(firstRow[relevant[relevantId]], numbers.Number)):
-      chart = alt.Chart(data).mark_line() if random.random() > 0.5 else alt.Chart(data).mark_point()
+      chart = alt.Chart(data).mark_area(interpolate = 'basis', color = '#007bff') if random.random() > 0.5 else alt.Chart(data).mark_point(color = '#007bff')
       script = chart.encode(
         x=restat['std'] + ':Q',
         y=relevant[relevantId] + ":Q").to_html()
       # quantitative + quantitative = line
     elif len(relevant) > 0:
       if random.random() > 0.5:
-        script = alt.Chart(data).mark_bar().encode(
+        script = alt.Chart(data).mark_bar(color = '#007bff').encode(
           x=relevant[relevantId] + ':O',
           y=restat['std'] + ":Q").to_html()
       else:
@@ -103,14 +157,14 @@ else:
       # text + quantitative = bar or pie
   elif (len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number)):
     if (len(relevant) > 1 and isinstance(firstRow[relevant[1]], numbers.Number)):
-      chart = alt.Chart(data).mark_line() if random.random() > 0.5 else alt.Chart(data).mark_point()
+      chart = alt.Chart(data).mark_area(interpolate = 'basis', color = '#007bff') if random.random() > 0.5 else alt.Chart(data).mark_point(color = '#007bff')
       script = chart.encode(
         x=relevant[0] + ':Q',
         y=relevant[1] + ":Q").to_html()
       # quantitative + quantitative = line
     elif len(relevant) > 1:
       if random.random() > 0.5:
-        script = alt.Chart(data).mark_bar().encode(
+        script = alt.Chart(data).mark_bar(color = '#007bff').encode(
           x=relevant[1] + ':O',
           y=relevant[0] + ":Q").to_html()
       else:
