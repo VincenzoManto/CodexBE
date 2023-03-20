@@ -106,7 +106,12 @@ def pruning(prompt, model):
 def execute(query, cursor):
   try:
     finalResult['results'] = []
-    cursor.execute(query)
+    if (connection['type'] == 'csv' or connection['type'] == 'json') and df is not None:
+      import pandasql as ps
+      cursor = ps.sqldf(df, locals())
+      fks = None
+    else:
+      cursor.execute(query)
     if connection['type'] == 'mysql':
       cursor = cursor.fetchall()
     extractedCols = []
@@ -249,6 +254,21 @@ def createPromptGPTMYSQL(cursor):
   """)
   createPromptGPT()
 
+def createPromptGPTCSVJSON():
+  import pandas as pd
+  if connection['type'] == 'csv':
+    df = pd.read_csv(connection['server'])
+  elif connection['type'] == 'json':
+    df = pd.read_json(connection['server'])
+
+  schema = 'df:'
+  for col in df:
+    schema = schema + '|' + col
+
+  gpt_prompt = 'Use LIKE and description or name columns. Use alias for COUNT, MAX, SUM, MIN, AVG\n\nSQL schema:\n' + schema + '#last query:' + lastQuery + '\n#new prompt:' + prompt + '\nSELECT'
+
+  finalResult['gpt_prompt'] = gpt_prompt
+
 def finalize():    
   if 'jumps' not in finalResult:
     finalResult['jumps'] = []
@@ -300,6 +320,7 @@ if (prompt == None):
 
 mycursor = mydb.cursor(dictionary=True)
 
+df = None
 fks = {}
 
 mycursor.execute("SELECT * FROM `table` WHERE db = %s", (int(db),))
@@ -394,6 +415,10 @@ if (connection['type'] == 'mssql' and step > 0):
 if (connection['type'] == 'mysql' and step > 0):
 
   createPromptGPTMYSQL(cursor)
+
+if (connection['type'] == 'csv' or connection['type'] == 'json' and step > 0):
+
+  createPromptGPTCSVJSON(cursor)
 
 if (step > 1):
 
