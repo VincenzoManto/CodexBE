@@ -12,6 +12,9 @@ This is the backend for a NQL (Natural Query Language) framework application dev
 
 ## Installation
 
+npm install vega-lite vega-cli canvas 
+
+
 1. Clone the repository and navigate to the root directory.
 2. Run `npm install` to install the required NodeJS dependencies.
 3. Create a MySQL database using the `dump.sql` template provided.

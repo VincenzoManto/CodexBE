@@ -103,12 +103,13 @@ def pruning(prompt, model):
 
   return [picked_table_names, tables_weights]
 
-def execute(query, cursor):
+def execute(query, cursor, fks):
   try:
     finalResult['results'] = []
     if (connection['type'] == 'csv' or connection['type'] == 'json') and df is not None:
       import pandasql as ps
-      cursor = ps.sqldf(df, locals())
+      cursor = ps.sqldf(query, locals()).to_json(orient="records")
+      cursor = json.loads(cursor)
       fks = None
     else:
       cursor.execute(query)
@@ -127,11 +128,11 @@ def execute(query, cursor):
       for table in fks.keys():
         finalResult['jumps'] = finalResult['jumps'] + list(filter(lambda x: x['from'] in extractedCols, fks[table]))          
   except:
-     finalResult['results'] = []
+    finalResult['jumps'] = []
 
 def createQueryGPT(gpt_prompt):
   import openai
-  openai.api_key = "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"
+  openai.api_key = os.getenv("GPT_CODEX_API_KEY")
 
   response = openai.Completion.create(
     model="code-davinci-002",
@@ -204,6 +205,7 @@ def createPromptGPT():
     if (len(filtered) > 0):
       description = filtered[0]['description']
     schema = schema + table + ' (' + description + ')' + ':' + cols[table] + '\n'
+  # MANCANO DA INVIARE LE FK
   gpt_prompt = 'Use LIKE and description or name columns. Use alias for COUNT, MAX, SUM, MIN, AVG\n\n' + connection['type'] + ' schema:\n' + schema + '#last query:' + lastQuery + '\n#new prompt:' + prompt + '\nSELECT'
 
   finalResult['gpt_prompt'] = gpt_prompt
@@ -352,7 +354,7 @@ mycursor.execute("SELECT query FROM `log` WHERE db = %s and session = %s and que
 last = mycursor.fetchone()
 lastQuery = last['query'] if not last == None else ''
 
-
+fks = {}
 
 finalResult = {}
 
@@ -365,7 +367,7 @@ if len(queries) > 0:
 
   keywords = list(map(lambda x: x[0], keywords)) 
   finalResult['keywords'] = keywords
-  execute(queries[0]['query'], cursor)
+  execute(queries[0]['query'], cursor, fks)
   finalResult['query'] = queries[0]['query']
   finalResult['cached'] = True
   finalize()
@@ -376,7 +378,6 @@ mycursor.execute("SELECT * FROM `connection` WHERE id = %s", (int(db),))
 connections = mycursor.fetchall()
 schema = []
 edges = {}
-fks = {}
 
 for table in tables:
   if table['description'] != None:
@@ -425,7 +426,7 @@ if (step > 1):
   createQueryGPT(finalResult['gpt_prompt'])
 
   if (step > 2):
-    execute(finalResult['query'], cursor)
+    execute(finalResult['query'], cursor, fks)
 
 finalize()
 

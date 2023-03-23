@@ -15,16 +15,7 @@ class DbMeta {
                                         process.env.DB_PASCODEX_DB_PASSWORD || '1234',
                                         {
                                             host: process.env.CODEX_DB_HOST || 'localhost',
-                                            dialect: 'mysql',
-                                            dialectOptions: {
-                                                options: {
-                                                  requestTimeout: 60000
-                                                }
-                                            },
-                                            pool: {
-                                                max: 50,
-                                                idle: 60000
-                                            }
+                                            dialect: 'mysql'
                                         });
         
         

@@ -70,6 +70,20 @@ if connection['type'] == 'mysql':
     WHERE table_name like '""" + letter + """%' and TABLE_SCHEMA = '""" + connection['name'] + """' 
       order by TABLE_NAMe
     """)
+  
+if connection['type'] == 'csv' or connection['type'] == 'json':
+  import pandas as pd
+  df = pd.read_csv(connection['server']) if connection['type'] == 'csv' else pd.read_json(connection['server']) 
+  cursor = []
+  for col in df:
+    cursor.append({
+      "column_name": col,
+      "table_name": "df",
+      "data_type": df.dtypes[col], #boh
+      "ref_table": None,
+      "ref_column": None
+    })
+  
 
 cols = {}
 mycursor = mydb.cursor(dictionary=True)
