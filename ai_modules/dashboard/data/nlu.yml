@@ -29,6 +29,19 @@ nlu:
     - can you generate me a dashboard on [student](obj)
     - give me a page about [orders](obj)
     - dashboard referred to [colors](obj)
+- intent: create
+  examples: |
+    - can you create me a [presentation](string)?            
+    - i want a [presentation](string)
+    - create a [presentation](string)
+    - i need to [present](string) this
+- synonym: presentation
+    - pptx
+    - presentation
+    - slides
+    - slideshow
+    - ppt
+    - powerpoint
 - synonym: large
   examples: |
     - wider
