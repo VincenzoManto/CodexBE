@@ -16,3 +16,7 @@ yake==0.4.8
 vega_datasets
 rasa
 pandasql
+altair_saver
+python-pptx
+selenium<4.3.0
+geopandas
