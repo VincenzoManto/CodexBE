@@ -20,3 +20,4 @@ altair_saver
 python-pptx
 selenium<4.3.0
 geopandas
+vpython
