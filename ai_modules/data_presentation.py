@@ -18,6 +18,11 @@ import sys
 from os.path import exists
 import math
 import random
+from dotenv import load_dotenv
+from pathlib import Path
+
+dotenv_path = Path(os.path.abspath(__file__) + '../.env')
+load_dotenv()
 
 def typerin(v):
     s = str(v)
@@ -305,9 +310,33 @@ texts = '\n'.join(titles)
 import openai
 openai.api_key = os.getenv("GPT_CODEX_API_KEY")
 
-gpt_prompt = '''Create me a  introduction title given these prompts
-Moreover, rewrite each prompt to be more captive.
-Reply me using this format: <index>|<prompt>
+gpt_prompt = '''Rewrite each prompt as a capturing introduction title.
+Reply using this format, without repeating the original input: <index>|<prompt>
+''' + texts
+
+response = openai.ChatCompletion.create(
+model="gpt-3.5-turbo",
+messages=[{
+    "role": "user", "content": gpt_prompt
+}],
+temperature=0.3,
+max_tokens=150,
+top_p=1.0,
+frequency_penalty=0.0,
+presence_penalty=0.0,
+stop=["#", ";"]
+)
+response = response['choices'][0]['message']['content']
+
+
+
+parts = response.split('\n')
+parts = list(filter(lambda x: x.strip() != '', parts))
+
+import re
+from datetime import datetime
+
+gpt_prompt = '''Create an introduction title given these prompts, without repeating the original input
 ''' + texts
 
 response = openai.ChatCompletion.create(
@@ -322,23 +351,17 @@ frequency_penalty=0.0,
 presence_penalty=0.0,
 stop=["#", ";"]
 )
+response = response['choices'][0]['message']['content']
 
-response = response['choices'][0]['message']
-
-
-
-parts = response.split('\n')
-parts = list(filter(lambda x: x.strip() != '', parts))
-import re
-
-titleText = re.sub(r'Introduction Title:', '', parts[0]).strip()
+titleText = re.sub(r'Introduction Title:', '', response.replace('"','')).strip()
 
 title=slide.shapes.title # assigning a title
 title.text=titleText #"Let's explore data" # title
+slide.shapes[1].text = datetime.today().strftime('%Y-%m-%d')
 
 
 
-idPrompt = 1
+idPrompt = 0
 for query in queries:
 
     copiedHeader = prs.slides.add_slide(prs.slide_layouts[slides["subheader"]])
@@ -382,6 +405,7 @@ for query in queries:
                 idxC = idxC + 1
 
         copiedImg = prs.slides.add_slide(prs.slide_layouts[slides["table"]])
+        # copiedImg.shapes[3].text = subText[0]
         [chart, width, height] = drawChart(df, copiedImg.shapes)
         try:
             chart.font.name = 'HP Simplified Hans'

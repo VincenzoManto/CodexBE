@@ -145,7 +145,7 @@ def createPromptGPT():
       description = filtered[0]['description']
     schema = schema + table + ' (' + description + ')' + ':' + cols[table] + '\n'
   # MANCANO DA INVIARE LE FK
-  return '# Create 4 SQL queries (only code) to useful data about "' + needle + '"\nDO NOT USE PLACEHOLDERS\n# ' + connection['type'] + ' schema:\n' + schema
+  return 'Give me 4 SQL queries (only code) to useful data about "' + needle + '"\nDO NOT USE PLACEHOLDERS\nDivide each query with "___________"\n# ' + connection['type'] + ' schema:\n' + schema
 
 def createPromptGPTSSQL(cursor):
   table_names = [("'" + i + "'") for i in picked_tables]
@@ -290,7 +290,8 @@ if gpt_prompt != None:
     response = response['choices'][0]['message']['content']
 
     import re
-    queries = [re.sub('\d\.','',x).strip() for x in response.split('\n')]
+    queries = [re.sub('\d\.','',x).strip().lower() for x in response.split('___________')]
+    queries = [re.sub('^.*?select',"select",x) for x in queries]
     print(json.dumps(queries))
 else:
   queries = []
