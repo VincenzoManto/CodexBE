@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 
 import fs from 'fs';
-import { createDashboard, diving, execute, pptx } from "../service/execution.service";
+import { createDashboard, diving, execute, pptx, queryExecution } from "../service/execution.service";
 
 export async function executionHandler(req: Request, res: Response, next: any) {
     try {
@@ -97,6 +97,16 @@ export async function pptxHandler(req: Request, res: Response, next: any) {
         } else {
             res.status(204)
         }
+        
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function queryExecutionHandler(req: Request, res: Response, next: any) {
+    try {
+        const dbs = await queryExecution(+req.params.id, req.body.query, req.params.session, next);
+        return res.send(dbs);
         
     } catch (e) {
         next(e);

@@ -1,5 +1,5 @@
 import { Express, Request, Response } from "express";
-import { createDashboardHandler, divingHandler, executionHandler, pptxHandler } from "./controller/execution.controller";
+import { createDashboardHandler, divingHandler, executionHandler, pptxHandler, queryExecutionHandler } from "./controller/execution.controller";
 import { getDbs, getSchemaHandler, setSchemaHandler, taggingHandler } from "./controller/schema.controller";
 import fs from 'fs';
 
@@ -177,6 +177,8 @@ function routes(app: Express, dashboardProcess: any) {
   app.post('/api/dashboard/:id', async (req, res, next) => createDashboardHandler(req, res, next, dashboardProcess));
 
   app.post('/api/pptx/:id', pptxHandler);
+
+  app.post('/api/execute-query/:id/:session', queryExecutionHandler);
 
   app.use( (error: any, request: any, response: any, next: any) => {
     console.error(error);

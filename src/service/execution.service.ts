@@ -24,6 +24,54 @@ export async function execute(id: number, message: string, session: string, next
     }
 };
 
+export async function queryExecution(id: number, query: string, session: string, next: any) {
+    console.log("Start pruning");
+    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/execution.py", id.toString(), query, session]);
+    const errorText = pythonProcess.stderr.toString().trim();
+    if (errorText) {
+        console.log(errorText);
+        throw new Error('Error tagging schema');
+    } else {
+        const data = pythonProcess.stdout.toString().trim(); 
+        const jsonData = JSON.parse(data);
+        if (jsonData.results?.length) {
+            const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/data_summarization.py", session, JSON.stringify(jsonData.keywords || [])]);
+
+            let summaryResults: any;
+        
+            const summarizationErrorText = pythonProcess.stderr?.toString().trim();
+            if (summarizationErrorText) {
+                console.log(summarizationErrorText)
+            } else {
+                summaryResults = JSON.parse(pythonProcess.stdout.toString().trim());
+                jsonData.summarization = summaryResults.text;
+                jsonData.pretext = summaryResults.pretext;
+                summaryResults.unrelevant = summaryResults.unrelevant || [];
+                jsonData.results.forEach((e: any) => {
+                    for (const unrelevant of summaryResults.unrelevant) {
+                        delete e[unrelevant];
+                    }
+                });
+            }
+            const pythonProcessVis = ChildProcess.spawnSync('python',["ai_modules/data_visualization.py", session, "Show me a bar chart"]);
+            if (!pythonProcessVis.stderr.toString().trim()) {
+                jsonData.chart = pythonProcessVis.stdout.toString().trim();
+            } else {
+                jsonData.chart = summaryResults?.chart;
+            }
+        }
+        DbMeta.getInstance().Log.create(
+            {
+                prompt: '%%AUTO QUERY%%',
+                query: query || '',
+                db: id,
+                session: session
+            }
+        ).catch((err: any) => next(err));
+        return jsonData;
+    }
+};
+
 export async function diving(id: number, body: any, session: string) {
     const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/deep_diving.py", id.toString(), session, JSON.stringify(body)]);
     const errorText = pythonProcess.stderr.toString().trim();
@@ -119,7 +167,7 @@ export async function createDashboard(db: number, obj: string) {
     } else {
         return JSON.parse(pythonProcess.stdout.toString().trim()); 
     }
-    if (obj.charAt(obj.length - 1) === 's') {
+    /* if (obj.charAt(obj.length - 1) === 's') {
         obj = obj.substring(0, obj.length - 1);
     }
     const queries = await DbMeta.getInstance().Log.findAll({
@@ -136,14 +184,14 @@ export async function createDashboard(db: number, obj: string) {
         attributes: [Sequelize.fn('DISTINCT', Sequelize.col('prompt')) ,'prompt'],
     });
     console.log(queries)
-    return queries;
+    return queries;*/
 }
 
 export async function pptx(id: number, queries: [], titles: []) {
     const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/data_presentation.py", id.toString(), JSON.stringify(queries), JSON.stringify(titles)]);
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
-        console.log("No DV");
+        console.log(errorText);
         return null;
     } else {
         return 'temp/' + pythonProcess.stdout.toString().trim(); 

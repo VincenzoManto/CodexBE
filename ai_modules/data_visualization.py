@@ -1,7 +1,12 @@
 import nltk
 nltk.download('stopwords', quiet=True)
+nltk.download('punkt', quiet=True)
+nltk.download('wordnet', quiet=True)
 import spacy
-spacy.load("en_core_web_sm", quiet=True) # download first
+try:
+    spacy.load("en_core_web_sm", quiet=True) # download first
+except:
+    spacy.download("en_core_web_sm", quiet=True)
 import collections
 from collections import abc
 collections.MutableMapping = abc.MutableMapping
@@ -12,7 +17,7 @@ import pandas as pd
 import sys
 from os.path import exists
 # Initializing NL4DV with a Housing Dataset
-data_url = "temp/" + sys.argv[1]
+data_url = os.path.dirname(__file__) + '\\..\\temp\\' + sys.argv[1]
 
 if (not exists(data_url)):
     raise Exception("No file")

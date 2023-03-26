@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 
-
+error = 0
 dotenv_path = Path(os.path.abspath(__file__) + '../.env')
 load_dotenv()
 
@@ -104,6 +104,7 @@ def pruning(prompt, model):
   return [picked_table_names, tables_weights]
 
 def execute(query, cursor, fks):
+  global error
   try:
     finalResult['results'] = []
     if (connection['type'] == 'csv' or connection['type'] == 'json') and df is not None:
@@ -127,6 +128,24 @@ def execute(query, cursor, fks):
     if not fks == None or table not in fks:
       for table in fks.keys():
         finalResult['jumps'] = finalResult['jumps'] + list(filter(lambda x: x['from'] in extractedCols, fks[table]))          
+  except mysql.connector.Error as e:
+    if error < 2:
+      import re
+      queryTables = re.findall("(?:from|join)\s+(\w+)", query)
+      error = error + 1
+      columns = re.findall("Unknown column '(.*?)'", str(e))
+      column = columns[0]
+      if column != None:
+        
+        query = re.sub("\s{0,}%(column)s\s{0,}" % { "column": column.replace('.','\.')}, "", query, flags=re.IGNORECASE)
+        query = re.sub("\w+\s*\(\s*\)", "", query, flags=re.IGNORECASE)
+        query = re.sub("(select\s+|,\s*)as \w+", "", query, flags=re.IGNORECASE)
+        query = re.sub(",\s*from", "", query, flags=re.IGNORECASE)
+        finalResult['query'] = query
+        execute(query, cursor, fks)
+      
+    else:
+      finalResult['jumps'] = []
   except:
     finalResult['jumps'] = []
 
@@ -134,18 +153,19 @@ def createQueryGPT(gpt_prompt):
   import openai
   openai.api_key = os.getenv("GPT_CODEX_API_KEY")
 
-  response = openai.Completion.create(
-    model="code-davinci-002",
-    prompt=gpt_prompt,
-    temperature=0.2,
+  response = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo",
+    messages=[{
+      "role": "user", "content": gpt_prompt
+    }],
+    temperature=0,
     max_tokens=150,
-    top_p=1.0,
-    frequency_penalty=0.0,
-    presence_penalty=0.0,
-    stop=["#", ";"]
+    top_p=1.0
   )
 
-  response = response['choices'][0]['text']
+  
+  response = response['choices'][0]['message']['content']
+
 
   topper = ''
   limit = ''
@@ -153,7 +173,8 @@ def createQueryGPT(gpt_prompt):
     topper = "top(15) " if 'top' not in response.lower() and 'distinct' not in response.lower() else ''
   elif connection['type'] == 'mysql':
     limit = " limit 15 " if 'limit' not in response.lower() else ''
-  query = ("SELECT " + topper + response + limit).replace('\\n','').replace('\\r','')
+  query = ("SELECT " + topper + response.replace(';',"") + limit).replace('\\n','').replace('\\r','')
+  query = query.replace('SELECT SELECT', 'SELECT')
 
   if ('delete' in query or 'update' in query or 'insert' in query or 'drop' in query or 'alter' in query):
     finalResult['results'] = []
@@ -206,7 +227,7 @@ def createPromptGPT():
       description = filtered[0]['description']
     schema = schema + table + ' (' + description + ')' + ':' + cols[table] + '\n'
   # MANCANO DA INVIARE LE FK
-  gpt_prompt = 'Use LIKE and description or name columns. Use alias for COUNT, MAX, SUM, MIN, AVG\n\n' + connection['type'] + ' schema:\n' + schema + '#last query:' + lastQuery + '\n#new prompt:' + prompt + '\nSELECT'
+  gpt_prompt = 'Use LIKE and description or name columns. SCHEMA HAS ALL THE EXISTING COLUMN. NO OTHER COLUMN EXISTS. Use alias for COUNT, MAX, SUM, MIN, AVG\n\n' + connection['type'] + ' schema:\n' + schema + '#last query:' + lastQuery + '\n#new prompt:' + prompt + '\nSELECT'
 
   finalResult['gpt_prompt'] = gpt_prompt
 
