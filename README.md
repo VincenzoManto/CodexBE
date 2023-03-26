@@ -27,6 +27,7 @@ CODex_API_KEY=<your_codex_api_key>
 ```
 5. Install the required Python libraries using `pip install -r requirements.txt`.
     Some requirements might be incoherent with running python version: in that case, install each requirement manually referring `to requirements.txt`. We suggest to use Python 3.10
+    5.1 Run `python -m spacy download en_core_web_sm`
 6. Update the Python script configuration files located in the `ai_modules` directory with the appropriate API keys and credentials.
 7. Start the backend server by running `node index.js`.
 
