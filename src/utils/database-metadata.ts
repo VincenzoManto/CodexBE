@@ -161,7 +161,6 @@ class DbMeta {
     }
 
     static getInstance() {
-        console.log("MOOOOOOOOOOO")
         if (this._instance) {
             return this._instance;
         }

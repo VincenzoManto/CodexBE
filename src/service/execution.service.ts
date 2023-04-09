@@ -166,7 +166,7 @@ export async function createDashboard(db: number, obj: string) {
         return null;
     } else {
         return JSON.parse(pythonProcess.stdout.toString().trim()); 
-    }
+    } 
     /* if (obj.charAt(obj.length - 1) === 's') {
         obj = obj.substring(0, obj.length - 1);
     }

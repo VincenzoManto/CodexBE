@@ -11,10 +11,15 @@ nlu:
 
 - intent: modify
   examples: |
+    - make the [first](CARDINAL) card [larger](action)? 
     - Can you make the [first](CARDINAL) column [wider](action)?            
     - Can you [wide](action) the [third](CARDINAL) column?
     - [enlarge](action) the column [3](CARDINAL)?
+    - [enlarge](action) the [3rd] card?
+    - [expand](action) the [5th] card?
+    - [expand](action) the card number [3]?
     - [reduce](action) the [last](CARDINAL) box?
+    - [reduce](action) the [1st](CARDINAL) box?
     - Can you make the [1](CARDINAL)° column [smaller](action)?   
 - intent: delete
   examples: |
@@ -23,13 +28,22 @@ nlu:
     - Remove the column [3](CARDINAL)?
     - Delete the [last](CARDINAL) box?
     - Can you drop the [1](CARDINAL)° column?   
+- intent: schema
+  examples: |
+    - Can you show me the entities?
+    - which kind of entities do i have?
+    - which are the tables available?
+    - what can i ask you to search?
+    - what is in the database?
+    - can you explain me what are the tables that i can search?
+    - show me all the entities available
 - intent: create
   examples: |
     - create me a dashboard about [grades](obj)            
     - can you generate me a dashboard on [student](obj)
     - give me a page about [orders](obj)
     - dashboard referred to [colors](obj)
-- intent: create
+- intent: presentation
   examples: |
     - can you create me a [presentation](string)?            
     - i want a [presentation](string)
@@ -42,6 +56,11 @@ nlu:
     - slideshow
     - ppt
     - powerpoint
+- synonym: table
+    - entity
+    - concept
+    - subject
+    - schema
 - synonym: large
   examples: |
     - wider
@@ -49,6 +68,7 @@ nlu:
     - huge
     - large
     - great
+    - expand
     - big
     - massive
     - broad  

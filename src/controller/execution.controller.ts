@@ -28,6 +28,9 @@ export async function createDashboardHandler(req: Request, res: Response, next: 
         dashboardProcess.stdin.write(req.body.message + '\n');
         dashboardProcess.stdout.on('data', async (data: any) => {
             try {
+                if (res?.headersSent) {
+                    return;
+                }
                 const NLU = JSON.parse(data);
                 if (NLU.intent?.name === 'add') {
                     res.send({
@@ -47,11 +50,26 @@ export async function createDashboardHandler(req: Request, res: Response, next: 
                     });
                 } else if (NLU.intent?.name === 'create') {
                     const obj = NLU.entities?.find((e: any) => e.entity === 'obj')?.value;
-                    if (obj) {
+                    if (obj && !req.body.chat) {
                         const queries = await createDashboard(+req.params.id, obj);
                         res.send({
                             intent: NLU.intent?.name,
                             queries
+                        });
+                    } else {
+                        res.send({
+                            intent: 'fallback'
+                        });
+                    }
+                } else if (NLU.intent?.name === 'presentation') {
+                    res.send({
+                        intent: 'presentation'
+                    })
+                } else if (NLU.intent?.name === 'schema') {
+                    if ((req.body.chat && NLU.intent?.confidence > 0.9) || !req.body.chat) {
+                        console.log(NLU?.intent?.confidence)
+                        res.send({
+                            intent: 'schema'
                         });
                     } else {
                         res.send({

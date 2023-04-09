@@ -101,8 +101,6 @@ def pruning(prompt, model):
     table_sim3[row[0]] = row[1]
   return [table_sim3, [picked_table_names, tables_weights]]
 
-  return [picked_table_names, tables_weights]
-
 def execute(query, cursor, fks):
   global error
   try:
@@ -160,7 +158,7 @@ def createQueryGPT(gpt_prompt):
     }],
     temperature=0,
     max_tokens=150,
-    top_p=1.0
+    top_p=0.5
   )
 
   
@@ -183,6 +181,7 @@ def createQueryGPT(gpt_prompt):
   finalResult['query'] = query
 
 def createPromptGPT():
+  global cursor
   mycursor = mydb.cursor(dictionary=True)
 
   mycursor.execute("SELECT * FROM `table` WHERE db = %s", (int(db),))
@@ -201,6 +200,10 @@ def createPromptGPT():
   tagged_table_names = list(map(lambda x: x['name'], tables))
 
   cols = {}
+  fkText = ""
+
+  if connection['type'] == 'mysql':
+    cursor = cursor.fetchall()
   for row in cursor:
     if (row['table_name'] not in cols):
       cols[row['table_name']] = ''
@@ -215,6 +218,7 @@ def createPromptGPT():
       fk['to_table'] = row['ref_table']
       fk['to_table_alias'] = filtered[0]['description']
       fks[row['table_name']].append(fk)
+      fkText = fkText + row['table_name'] + "." + row['column_name'] + " -> " + row["ref_table"] + "." + row["ref_column"] + "\n"
     completeName = row['table_name'] + '.' + row['column_name']
     if completeName in metaColumns or row['table_name'] + '.*' in metaColumns:
      cols[row['table_name']] = cols[row['table_name']] + row['column_name'] + '|'
@@ -227,7 +231,7 @@ def createPromptGPT():
       description = filtered[0]['description']
     schema = schema + table + ' (' + description + ')' + ':' + cols[table] + '\n'
   # MANCANO DA INVIARE LE FK
-  gpt_prompt = 'Use LIKE and description or name columns. SCHEMA HAS ALL THE EXISTING COLUMN. NO OTHER COLUMN EXISTS. Use alias for COUNT, MAX, SUM, MIN, AVG\n\n' + connection['type'] + ' schema:\n' + schema + '#last query:' + lastQuery + '\n#new prompt:' + prompt + '\nSELECT'
+  gpt_prompt = 'Use LIKE and description or name columns. DO NOT VALUE PARAMETERS IF NOT REQUESTED. SCHEMA HAS ALL THE EXISTING COLUMN. NO OTHER COLUMN EXISTS. Use alias for COUNT, MAX, SUM, MIN, AVG\n\n' + connection['type'] + ' schema:\n' + schema + '# foreign keys: ' + fkText + '\n#last query:' + lastQuery + '\n#new prompt:' + prompt + '\nSELECT'
 
   finalResult['gpt_prompt'] = gpt_prompt
 
@@ -394,7 +398,7 @@ if len(queries) > 0:
   finalize()
   exit()
 
-mycursor.execute("SELECT * FROM `connection` WHERE id = %s", (int(db),))
+mycursor.execute("SELECT * FROM `connection` WHERE db = %s", (int(db),))
 
 connections = mycursor.fetchall()
 schema = []
@@ -409,7 +413,6 @@ for table in tables:
       else:
           edges[name] = local_edges
       schema.append(name)
-
 
 file = open('dictionary/' + str(db) + '.dictionary','rb')
 encodes = pickle.load(file)

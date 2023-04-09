@@ -5,10 +5,12 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import pymssql
 import json
+import numpy as np
 import sys
 import mysql.connector
 import sys
 from dotenv import load_dotenv
+import random
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 
@@ -100,7 +102,7 @@ def pruning(prompt, model):
   return [table_sim3, [picked_table_names, tables_weights]]
 
 
-def createPromptGPT():
+def createPromptGPT(cursor):
   mycursor = mydb.cursor(dictionary=True)
 
   mycursor.execute("SELECT * FROM `table` WHERE db = %s", (int(db),))
@@ -118,8 +120,12 @@ def createPromptGPT():
 
   tagged_table_names = list(map(lambda x: x['name'], tables))
 
+  if connection['type'] == 'mysql':
+    rows = cursor.fetchall()
+  else:
+    rows = cursor
   cols = {}
-  for row in cursor:
+  for row in rows:
     if (row['table_name'] not in cols):
       cols[row['table_name']] = ''
     newCol = row['column_name']
@@ -134,8 +140,6 @@ def createPromptGPT():
       fk['to_table_alias'] = filtered[0]['description']
       fks[row['table_name']].append(fk)
     completeName = row['table_name'] + '.' + row['column_name']
-    if completeName in metaColumns or row['table_name'] + '.*' in metaColumns:
-     cols[row['table_name']] = cols[row['table_name']] + row['column_name'] + '|'
 
   schema = ''
   for table in cols:
@@ -144,8 +148,122 @@ def createPromptGPT():
     if (len(filtered) > 0):
       description = filtered[0]['description']
     schema = schema + table + ' (' + description + ')' + ':' + cols[table] + '\n'
-  # MANCANO DA INVIARE LE FK
-  return 'Give me 4 SQL queries (only code) to useful data about "' + needle + '"\nDO NOT USE PLACEHOLDERS\nDivide each query with "___________"\n# ' + connection['type'] + ' schema:\n' + schema
+
+  numericCols = list(filter(lambda x: x['data_type'] in ['int', 'float', 'double', 'decimal'] and x['ref_column'] is None, list(rows)))
+  fksCols = list(filter(lambda x: x['ref_table'] in picked_tables and x['ref_column'] is not None, list(rows)))
+
+  visibleCols = []
+
+  for table in picked_tables:
+    mean = 0.5 * np.max(list(map(lambda y: y[1], filter(lambda x: 'id' not in x[0], relevance[table].items()))))
+    cols = list(map(lambda y: y[0], list(filter(lambda x: x[1] >= mean, relevance[table].items()))))
+    visibleCols = visibleCols + list(filter(lambda x: x['column_name'] in cols and x['data_type'] == 'varchar', list(rows)))
+
+  queries = []
+  templates = [
+    "SELECT <t1>.<v1>, <t1>.<v2>, <t1>.<v3> FROM <t1>",
+    "SELECT <t1>.<v1>, <t1>.<v2> FROM <t1>",
+    "SELECT <t1>.<v1>, <t1>.<i1> FROM <t1>",
+    "SELECT COUNT(<t1>.<v1>) as 'Nr <t1v1>' FROM <t1>",
+    "SELECT MAX(<t1>.<i1>) as 'Maximum <t1i1>', MIN(<t1>.<i1>) as 'Minium <t1i1>', AVG(<t1>.<i1>) as 'Average <t1i1>' FROM <t1>",
+    "SELECT MAX(<t1>.<i1>) as 'Maximum <t1i1> per <t1v1>', MIN(<t1>.<i1>) as 'Minimum <t1i1> per <t1v1>', AVG(<t1>.<i1>) as 'Average <t1i1> per <t1v1>', <t1>.<v1> FROM <t1> GROUP BY <t1>.<v1>",
+    "SELECT * FROM (SELECT COUNT(<t1>.<i1>) as 'Nr of <t1i1>', MAX(<t1>.<i1>) as 'Maximum <t1i1> per <t1v1>', MIN(<t1>.<i1>) as 'Minimum <t1i1> per <t1v1>', AVG(<t1>.<i1>) as 'Average <t1i1> per <t1v1>', <t1>.<v1> FROM <t1> GROUP BY <t1>.<v1>) AS X ORDER BY X.`Nr of <t1i1>`, X.`Maximum <t1i1> per <t1v1>` DESC LIMIT 1",
+    "SELECT * FROM (SELECT COUNT(<t1>.<i1>) as 'Nr of <t1i1>', MAX(<t1>.<i1>) as 'Maximum <t1i1> per <t1v1>', MIN(<t1>.<i1>) as 'Minimum <t1i1> per <t1v1>', AVG(<t1>.<i1>) as 'Average <t1i1> per <t1v1>', <t1>.<v1> FROM <t1> GROUP BY <t1>.<v1>) AS X ORDER BY X.`Nr of <t1i1>`, X.`Minimum <t1i1> per <t1v1>` ASC LIMIT 1",
+    "SELECT COUNT(<t1>.<i1>) as 'Nr <t1i1> per <t1v1>', <t1v1> FROM <t1>.<t1> GROUP BY <t1>.<v1>",
+    "SELECT COUNT(<t1>.<i1>) as 'Nr <t1i1> per <t1v1> and <t1v2>', <t1>.<v1>, <t1>.<v2> FROM <t1>.<t1> GROUP BY <t1>.<v1>, <t1>.<v2>",
+    "SELECT <t1>.<v1>, <t2>.<v1> FROM <t1> INNER JOIN <t2> ON <join>",
+    "SELECT MAX(<t1>.<i1>) as 'Maximum <t1i1> per <t2v1>', MIN(<t1>.<i1>) as 'Minimum <t1i1> per <t2v1>', AVG(<t1>.<i1>) as 'Average <t1i1> per <t2v1>', <t2>.<v1> FROM <t1> INNER JOIN <t2> ON <join> GROUP BY <t2>.<v1>",
+    "SELECT * FROM (SELECT COUNT(<t1>.<i1>) as 'Nr of <t1i1>', MAX(<t1>.<i1>) as 'Maximum <t1i1> per <t2v1>', MIN(<t1>.<i1>) as 'Minimum <t1i1> per <t2v1>', AVG(<t1>.<i1>) as 'Average <t1i1> per <t2v1>', <t2>.<v1> FROM <t1> INNER JOIN <t2> ON <join> GROUP BY <t2>.<v1>) AS X ORDER BY X.`Nr of <t1i1>`, X.`Maximum <t1i1> per <t2v1>` DESC LIMIT 1",
+    "SELECT * FROM (SELECT COUNT(<t1>.<i1>) as 'Nr of <t1i1>', MAX(<t1>.<i1>) as 'Maximum <t1i1> per <t2v1>', MIN(<t1>.<i1>) as 'Minimum <t1i1> per <t2v1>', AVG(<t1>.<i1>) as 'Average <t1i1> per <t2v1>', <t2>.<v1> FROM <t1> INNER JOIN <t2> ON <join> GROUP BY <t2>.<v1>) AS X ORDER BY X.`Nr of <t1i1>`, X.`Minimum <t1i1> per <t2v1>` ASC LIMIT 1",
+    "SELECT COUNT(<t1>.<i1>) as 'Nr <t1i1> per <t2v1>', <t2>.<v1> FROM <t1> INNER JOIN <t2> ON <join> GROUP BY <t2>.<v1>",
+    "SELECT MAX(<t1>.<i1>) as 'Maximum <t1i1> per <t2i2>', MIN(<t1>.<i1>) as 'Minimum <t1>.<i1> per <t2i2>', AVG(<t1>.<i1>) as 'Average <t1i1> per <t2i2>', <t2>.<i2> FROM <t1> INNER JOIN <t2> ON <join> GROUP BY <t2>.<i2>",
+    "SELECT COUNT(<t1>.<i1>) as 'Nr <t1>.<i1> per <t2i2>', <t2>.<i2> FROM <t1> INNER JOIN <t2> ON <join> GROUP BY <t2>.<i2>",
+    "SELECT MAX(<t1>.<i1>) as 'Maximum <t1i1> per <t2fk1>', MIN(<t1>.<i1>) as 'Minimum <t1i1> per <t2fk1>', AVG(<t1>.<i1>) as 'Average <t1i1> per <t2fk1>', <t2>.<fk1> FROM <t1> INNER JOIN <t2> ON <join> GROUP BY <t2>.<fk1>",
+    "SELECT COUNT(<t1>.<i1>) as 'Nr <t1i1> per <t2fk1>', <t2>.<fk1> FROM <t1> INNER JOIN <t2> ON <join> GROUP BY <t2>.<fk1>",
+  ]
+  counts = {}
+  for template in templates:
+    counts[template] = 2
+  i = 0
+  while len(queries) <= 6 and (i < 1000 and len(templates) > 0):
+    template = random.choice(templates)
+    t1 = random.choice(picked_tables)
+    numericColsT1 = list(map(lambda y: y['column_name'], list(filter(lambda x: 'id' not in x['column_name'] and x['table_name'] == t1, numericCols))))
+    random.shuffle(numericColsT1)
+    t1i1 = numericColsT1[0] if len(numericColsT1) > 0 else ''
+    t1i2 = numericColsT1[1] if len(numericColsT1) > 1 else ''
+    t1i3 = numericColsT1[2] if len(numericColsT1) > 2 else ''
+    visibleColsT1 = list(map(lambda y: y['column_name'], list(filter(lambda x: x['table_name'] == t1, visibleCols))))
+    random.shuffle(visibleColsT1)
+    t1v1 = visibleColsT1[0] if len(visibleColsT1) > 0 else ''
+    t1v2 = visibleColsT1[1] if len(visibleColsT1) > 1 else ''
+    t1v3 = visibleColsT1[2] if len(visibleColsT1) > 2 else ''
+    query = template
+    query = query.replace('<t1>.<v1>', t1 + '.' + t1v1)
+    query = query.replace('<t1v1>', t1v1)
+    query = query.replace('<t1>.<v2>', t1 + '.' + t1v2)
+    query = query.replace('<t1v2>', t1v2)
+    query = query.replace('<t1>.<v3>', t1 + '.' + t1v3)
+    query = query.replace('<t1v3>', t1v3)
+    query = query.replace('<t1>.<i1>', t1 + '.' + t1i1)
+    query = query.replace('<t1i1>', t1i1)
+    query = query.replace('<t1>.<i2>', t1 + '.' + t1i2)
+    query = query.replace('<t1i2>', t1i2)
+    query = query.replace('<t1>.<i3>', t1 + '.' + t1i3)
+    query = query.replace('<t1i3>', t1i3)
+    query = query.replace('<t1>', t1)
+    if '<t2>' in template:
+      if len(picked_tables) <= 1:
+        continue
+      t2 = random.choice(picked_tables) # list(set(picked_tables) - set(t1))[0]
+      fksColsT1T2 = list(filter(lambda x: (x['ref_table'], x['table_name']) in [(t1,t2),(t2,t1)], fksCols))
+      if len(fksColsT1T2) <= 0:
+        continue
+      else:
+        join = ' and '.join(list(map(lambda x: x['table_name'] + '.' + x['column_name'] + ' = ' + x['ref_table'] + '.' + x['ref_column'], fksColsT1T2)))
+      numericColsT2 = list(map(lambda y: y['column_name'], filter(lambda x: 'id' not in x['column_name'] and x['table_name'] == t2, numericCols)))
+      random.shuffle(numericColsT2)
+      t2i1 = numericColsT2[0] if len(numericColsT2) > 0 else ''
+      t2i2 = numericColsT2[1] if len(numericColsT2) > 1 else ''
+      t2i3 = numericColsT2[2] if len(numericColsT2) > 2 else ''
+      visibleColsT2 = list(map(lambda y: y['column_name'], filter(lambda x: x['table_name'] == t2, visibleCols)))
+      random.shuffle(visibleColsT2)
+      t2v1 = visibleColsT2[0] if len(visibleColsT2) > 0 else ''
+      t2v2 = visibleColsT2[1] if len(visibleColsT2) > 1 else ''
+      t2v3 = visibleColsT2[2] if len(visibleColsT2) > 2 else ''
+      
+      query = query.replace('<t2>.<v1>', t2 + '.' + t2v1)
+      query = query.replace('<t2v1>', t2v1)
+      query = query.replace('<t2>.<v2>', t2 + '.' + t2v2)
+      query = query.replace('<t2v2>', t2v2)
+      query = query.replace('<t2>.<v3>', t2 + '.' + t2v3)
+      query = query.replace('<t2v3>', t2v3)
+      query = query.replace('<t2>.<i1>', t2 + '.' + t2i1)
+      query = query.replace('<t2i1>', t2i1)
+      query = query.replace('<t2>.<i2>', t2 + '.' + t2i2)
+      query = query.replace('<t2i2>', t2i2)
+      query = query.replace('<t2>.<i3>', t2 + '.' + t2i3)
+      query = query.replace('<t2i3>', t2i3)
+      query = query.replace('<t2>.<fk1>', t2 + '.' + fksColsT1T2[0]['column_name'])
+      query = query.replace('<t2fk1>', fksColsT1T2[0]['column_name'])
+
+      query = query.replace('<join>', join)
+      query = query.replace('<t2>', t2)
+    i = i + 1
+    try:
+      if ' LIMIT ' not in query:
+        cursor.execute(query + ' LIMIT 1')
+      else:
+        cursor.execute(query)
+      x = cursor.fetchall()
+      queries.append(query)
+      counts[template] = counts[template] - 1
+      if counts[template] < 0:
+        templates.remove(template)
+    except Exception as e:
+      continue
+    
+  return queries
 
 def createPromptGPTSSQL(cursor):
   table_names = [("'" + i + "'") for i in picked_tables]
@@ -174,7 +292,7 @@ def createPromptGPTSSQL(cursor):
       order by TABLE_NAMe
   """)
 
-  return createPromptGPT()
+  return createPromptGPT(cursor)
 
 def createPromptGPTMYSQL(cursor):
   table_names = [("'" + i + "'") for i in picked_tables]
@@ -191,7 +309,7 @@ def createPromptGPTMYSQL(cursor):
     WHERE table_name in (""" + ','.join(table_names) + """) and TABLE_SCHEMA = '""" + connection['name'] + """' 
       order by TABLE_NAMe
   """)
-  return createPromptGPT()
+  return createPromptGPT(cursor)
 
 db = sys.argv[1]
 if (db == None):
@@ -236,7 +354,7 @@ elif connection['type'] == 'mysql':
   )
   cursor = conn.cursor(dictionary=True)
 
-mycursor.execute("SELECT * FROM `connection` WHERE id = %s", (int(db),))
+mycursor.execute("SELECT * FROM `connection` WHERE db = %s", (int(db),))
 
 connections = mycursor.fetchall()
 schema = []
@@ -257,6 +375,10 @@ file = open('dictionary/' + str(db) + '.dictionary','rb')
 encodes = pickle.load(file)
 file.close()
 
+file = open('dictionary/' + str(db) + '.relevance','rb')
+relevance = pickle.load(file)
+file.close()
+
 
 from sentence_transformers import SentenceTransformer
 model = SentenceTransformer('multi-qa-mpnet-base-dot-v1')
@@ -266,12 +388,20 @@ model = SentenceTransformer('multi-qa-mpnet-base-dot-v1')
 
 if (connection['type'] == 'mssql'):
 
-  gpt_prompt = createPromptGPTSSQL(cursor)
+  queries = createPromptGPTSSQL(cursor)
 
 if (connection['type'] == 'mysql'):
 
-  gpt_prompt = createPromptGPTMYSQL(cursor)
+  queries = createPromptGPTMYSQL(cursor)
 
+'''
+from nltk.corpus import wordnet as wn
+for ss in wn.synsets(needle): # Each synset represents a diff concept.
+  print(ss.lemma_names(), "\t", ss.definition())
+'''
+
+print(json.dumps(queries))
+'''
 if gpt_prompt != None:
   
     import openai
@@ -295,3 +425,5 @@ if gpt_prompt != None:
     print(json.dumps(queries))
 else:
   queries = []
+
+'''

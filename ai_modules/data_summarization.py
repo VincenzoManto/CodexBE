@@ -8,8 +8,11 @@ from os.path import exists
 import math
 import random
 import json
+from dotenv import load_dotenv
+from pathlib import Path
 
-
+dotenv_path = Path(os.path.abspath(__file__) + '../.env')
+load_dotenv()
 data_url = os.path.dirname(__file__) + '\\..\\temp\\' + sys.argv[1]
 keywords = json.loads(sys.argv[2])
 
@@ -80,19 +83,19 @@ script = None
 if mapColumn is not None and total_length > 0:
   from vega_datasets import data as vegaDT
   relevantId = 0
-  while relevantId < len(relevant) - 1 and mapColumn == relevant[relevantId]:
+  while relevantId < len(relevant) - 1 and mapColumn == relevant[relevantId] and not isinstance(firstRow[relevant[relevantId]], numbers.Number):
     relevantId = relevantId + 1
-  if mapColumn == relevant[relevantId]:
+  if mapColumn == relevant[relevantId] or not isinstance(firstRow[relevant[relevantId]], numbers.Number):
     relevantId = 0
     keys = firstRow.keys()
-    while relevantId < len(keys) - 1 and mapColumn == keys[relevantId]:
+    while relevantId < len(keys) - 1 and (mapColumn == keys[relevantId] or not isinstance(firstRow[keys[relevantId]], numbers.Number)):
       relevantId = relevantId + 1
     value = keys[relevantId]
   else:
     value = relevant[relevantId]
 
   value = value.replace('(','').replace(')','')
-  geoData = data
+  geoData = data.copy()
   geoData.columns = geoData.columns.str.replace(r"[()]", "")
   geoData['codex_country_code'] = 0
   newData = geoData.reset_index()
@@ -126,9 +129,14 @@ elif dateColumn is not None:
       x=dateColumn + ':T',
       y=restat['std'] + ":Q").to_html()
   elif len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number):
-    script = alt.Chart(data).mark_area(interpolate = 'basis', color = '#007bff').encode(
-      x=dateColumn + ':T',
-      y=relevant[0] + ":Q").to_html()
+    script = alt.Chart(data).mark_rect().encode(
+      x=alt.X("date(" + dateColumn + "):O", title="Day", axis=alt.Axis(format="%e", labelAngle=0)),
+      y=alt.Y("month(" + dateColumn + "):O", title="Month"),
+      color=alt.Color("max(" + relevant[0] + ")", legend=alt.Legend(title=None)),
+      tooltip=[
+          alt.Tooltip("monthdate(" + dateColumn + ")", title="Date"),
+          alt.Tooltip("max(" + relevant[0] + ")", title="Max Temp"),
+      ],).to_html()
   elif len(relevant) > 0:
     script = alt.Chart(data).mark_bar(color = '#007bff').encode(
       x=dateColumn + ':T',
@@ -276,7 +284,25 @@ for key in keywords:
 uniqueKeywords = pd.unique(uniqueKeywords)
 
 sentences['count'] = sentences['count'].replace('[count]', str(total_length))
-text = "The data refers to " + ','.join(uniqueKeywords) + sentences['count'] + sentences['unrelevant'] + sentences['relevant'] + sentences['column_analysis'] + '\n' + colText
+text = sentences['count'] + sentences['unrelevant'] + sentences['relevant'] + sentences['column_analysis'] + '\n' + colText
+
+gpt_prompt = "Rewrite: " + text + "\nMoreover, tell what this dataset could be referred to given the columns: " + ', '.join(newData.columns)
+
+import openai
+openai.api_key = os.getenv("GPT_CODEX_API_KEY")
+
+response = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo",
+    messages=[{
+        "role": "user", "content": gpt_prompt
+    }],
+    temperature=0.2,
+    max_tokens=550,
+    top_p=1.0
+)
+
+text = response['choices'][0]['message']['content']
+
 finalResult = {
   "pretext": pretext,
   "text": text,
