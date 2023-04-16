@@ -5,7 +5,7 @@ import fs from 'fs';
 
 
 export async function execute(id: number, message: string, session: string, next: any, step: number = 0) {
-    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/data_visualization.py", session, message]);
+    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "visualization",  session, message]);
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
         console.log("No DV");
@@ -19,6 +19,25 @@ export async function execute(id: number, message: string, session: string, next
             const result = {
                 chart: dataVis
             };
+            return result;
+        }
+    }
+};
+
+export async function insertExecute(id: number, message: string, session: string, next: any, step: number = 0) {
+    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "insert",  id.toString(), message]);
+    const errorText = pythonProcess.stderr.toString().trim();
+    if (errorText) {
+        console.log("No DV");
+        return null;
+    } else {
+        const dataVis = pythonProcess.stdout.toString().trim(); 
+        console.log(dataVis);
+        if (!dataVis) {
+            return null;
+        } else {
+            const result = JSON.parse(dataVis);
+            result.insert = true;
             return result;
         }
     }
@@ -112,7 +131,7 @@ export async function diving(id: number, body: any, session: string) {
 
 function pruning (id: number, message: string, session: string, step: number = 0, next: any) {
     console.log("Start pruning");
-    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/pruning.py", id.toString(), message, session, step.toString()]);
+    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "pruning", id.toString(), message, session, step.toString()]);
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
         console.log(errorText);
@@ -121,7 +140,7 @@ function pruning (id: number, message: string, session: string, step: number = 0
         const data = pythonProcess.stdout.toString().trim(); 
         const jsonData = JSON.parse(data);
         if (jsonData.results?.length) {
-            const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/data_summarization.py", session, JSON.stringify(jsonData.keywords || [])]);
+            const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "summarization", session, JSON.stringify(jsonData.keywords || [])]);
 
             let summaryResults: any;
         
@@ -139,7 +158,7 @@ function pruning (id: number, message: string, session: string, step: number = 0
                     }
                 });
             }
-            const pythonProcessVis = ChildProcess.spawnSync('python',["ai_modules/data_visualization.py", session, "Show me a bar chart"]);
+            const pythonProcessVis = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "visualization", session, "Show me a bar chart"]);
             if (!pythonProcessVis.stderr.toString().trim()) {
                 jsonData.chart = pythonProcessVis.stdout.toString().trim();
             } else {
@@ -167,24 +186,6 @@ export async function createDashboard(db: number, obj: string) {
     } else {
         return JSON.parse(pythonProcess.stdout.toString().trim()); 
     } 
-    /* if (obj.charAt(obj.length - 1) === 's') {
-        obj = obj.substring(0, obj.length - 1);
-    }
-    const queries = await DbMeta.getInstance().Log.findAll({
-        order: [
-            ['id', 'desc']
-        ],        
-        limit: 4,
-        where: {
-            db: db,
-            prompt: {
-                [Op.like]: '%' + obj + '%'
-            }
-        },
-        attributes: [Sequelize.fn('DISTINCT', Sequelize.col('prompt')) ,'prompt'],
-    });
-    console.log(queries)
-    return queries;*/
 }
 
 export async function pptx(id: number, queries: [], titles: []) {

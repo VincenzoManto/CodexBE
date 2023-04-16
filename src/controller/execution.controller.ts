@@ -1,12 +1,17 @@
 import { Request, Response } from "express";
 
 import fs from 'fs';
-import { createDashboard, diving, execute, pptx, queryExecution } from "../service/execution.service";
+import { createDashboard, diving, execute, insertExecute, pptx, queryExecution } from "../service/execution.service";
 
 export async function executionHandler(req: Request, res: Response, next: any) {
     try {
-        const dbs = await execute(+req.params.id, req.body.message, req.params.session, next, req.body.step || 0);
-        return res.send(dbs);
+        if (req.body.insert) {
+            const dbs = await insertExecute(+req.params.id, req.body.message, req.params.session, next);
+            return res.send(dbs);
+        } else {
+            const dbs = await execute(+req.params.id, req.body.message, req.params.session, next, req.body.step || 0);
+            return res.send(dbs);
+        }
     } catch (e) {
         next(e);
     }
@@ -66,7 +71,7 @@ export async function createDashboardHandler(req: Request, res: Response, next: 
                         intent: 'presentation'
                     })
                 } else if (NLU.intent?.name === 'schema') {
-                    if ((req.body.chat && NLU.intent?.confidence > 0.9) || !req.body.chat) {
+                    if ((req.body.chat && NLU.intent?.confidence > 0.95) || !req.body.chat) {
                         console.log(NLU?.intent?.confidence)
                         res.send({
                             intent: 'schema'
