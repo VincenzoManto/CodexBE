@@ -30,13 +30,9 @@ nlu:
     - Can you drop the [1](CARDINAL)° column?   
 - intent: schema
   examples: |
-    - Can you show me the entities?
-    - which kind of entities do i have?
-    - which are the tables available?
-    - what can i ask you to search?
-    - what is in the database?
-    - can you explain me what are the tables that i can search?
-    - show me all the entities available
+    - entities
+    - database
+    - help
 - intent: create
   examples: |
     - create me a dashboard about [grades](obj)            

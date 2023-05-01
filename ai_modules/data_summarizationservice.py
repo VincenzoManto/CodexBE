@@ -18,6 +18,11 @@ def summarization(mydb, session, keywords, countryInfo):
   data_url = os.path.dirname(__file__) + '\\..\\temp\\' + session
   keywords = json.loads(keywords)
 
+  def validatePhone(number):
+    import re
+    pattern = re.compile("^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$")
+    return pattern.match(number)
+
   if (not exists(data_url)):
       raise Exception("No file")
   data = pd.read_json(data_url, convert_dates=True)
@@ -124,18 +129,57 @@ def summarization(mydb, session, keywords, countryInfo):
       .project('equirectangular')).to_html()
   elif dateColumn is not None:
     if restat['std'] is not None:
-      chart = alt.Chart(data).mark_area(interpolate = 'basis', color = '#007bff') if random.random() > 0.5 else alt.Chart(data).mark_bar(color = '#007bff')
-      script = chart.encode(
-        x=dateColumn + ':T',
-        y=restat['std'] + ":Q").to_html()
-    elif len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number):
+      r = 1# random.random()
+
+      if r < 0.33:
+        chart = alt.Chart(data).mark_area(interpolate = 'basis', color = '#007bff')
+      elif r < 0.66:
+        chart = alt.Chart(data).mark_bar(color = '#007bff')
+      if r < 0.66:
+        script = chart.encode(
+          x=dateColumn + ':T',
+          y=restat['std'] + ":Q").to_html()
+      else:
+        from datetime import date, datetime, timedelta
+
+        data = data.query(dateColumn + "==" + dateColumn)
+        dates = list(map(lambda y: datetime.strptime(str(y.date()), "%Y-%m-%d"), data[dateColumn]))
+        start_date = min(dates)
+        end_date = max(dates)    # perhaps date.now()
+
+        delta = end_date - start_date   # returns timedelta
+
+        for i in range(delta.days + 1):
+            day = start_date + timedelta(days=i)
+            if day not in data[dateColumn]:
+              record = {}
+              record[dateColumn] = day
+              record[restat['std']] = 0
+              
+              data = data.append(record, ignore_index=True)
+
+        script = alt.Chart(data).mark_rect().encode(
+            x=alt.X("date(" + dateColumn + "):O", title = "Day" ,axis = alt.Axis(format="%e", labelAngle=0)),
+            y = alt.Y("yearmonth(" + dateColumn + "):O", title = "Month"),
+            color = alt.Color("max(" + restat['std'] + ")", title = None, scale=alt.Scale(scheme="darkblue", reverse=True, domain=[0, 1.5*max(data[restat['std']])])),
+            tooltip=[
+                alt.Tooltip("yearmonthdate(" + dateColumn + ")", title="Date"),
+                alt.Tooltip("max(" + restat['std'] + ")", title="Max " + restat['std']),
+            ],
+        ).configure_view(
+            step=13,
+            strokeWidth=0
+        ).configure_axis(
+            domain=False
+        ).to_html()
+    elif len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number) and validatePhone(firstRow[relevant[0]]):
       script = alt.Chart(data).mark_rect().encode(
         x=alt.X("date(" + dateColumn + "):O", title="Day", axis=alt.Axis(format="%e", labelAngle=0)),
         y=alt.Y("month(" + dateColumn + "):O", title="Month"),
-        color=alt.Color("max(" + relevant[0] + ")", legend=alt.Legend(title=None)),
+        color=alt.Color("max(" + relevant[0] + ")", legend=alt.Legend(title=None),  scale=alt.Scale(scheme="darkblue")),
         tooltip=[
             alt.Tooltip("monthdate(" + dateColumn + ")", title="Date"),
-            alt.Tooltip("max(" + relevant[0] + ")", title="Max Temp"),
+            alt.Tooltip("max(" + relevant[0] + ")", title="Max"),
         ],).to_html()
     elif len(relevant) > 0:
       script = alt.Chart(data).mark_bar(color = '#007bff').encode(
@@ -147,7 +191,7 @@ def summarization(mydb, session, keywords, countryInfo):
       relevantId = 0
       while relevantId < len(relevant) and restat['std'] == relevant[relevantId]:
         relevantId = relevantId + 1
-      if (len(relevant) > 0 and isinstance(firstRow[relevant[relevantId]], numbers.Number)):
+      if (len(relevant) > 0 and isinstance(firstRow[relevant[relevantId]], numbers.Number)) and validatePhone(firstRow[relevant[relevantId]]):
         chart = alt.Chart(data).mark_area(interpolate = 'basis', color = '#007bff') if random.random() > 0.5 else alt.Chart(data).mark_point(color = '#007bff')
         script = chart.encode(
           x=restat['std'] + ':Q',
@@ -163,8 +207,8 @@ def summarization(mydb, session, keywords, countryInfo):
             theta=alt.Theta(field=restat['std'], type="quantitative"),
             color=alt.Color(field=relevant[relevantId], type="nominal")).to_html()
         # text + quantitative = bar or pie
-    elif (len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number)):
-      if (len(relevant) > 1 and isinstance(firstRow[relevant[1]], numbers.Number)):
+    elif (len(relevant) > 0 and isinstance(firstRow[relevant[0]], numbers.Number)) and validatePhone(firstRow[relevant[0]]):
+      if (len(relevant) > 1 and isinstance(firstRow[relevant[1]], numbers.Number)) and validatePhone(firstRow[relevant[1]]):
         chart = alt.Chart(data).mark_area(interpolate = 'basis', color = '#007bff') if random.random() > 0.5 else alt.Chart(data).mark_point(color = '#007bff')
         script = chart.encode(
           x=relevant[0] + ':Q',
@@ -286,7 +330,7 @@ def summarization(mydb, session, keywords, countryInfo):
   sentences['count'] = sentences['count'].replace('[count]', str(total_length))
   text = sentences['count'] + sentences['unrelevant'] + sentences['relevant'] + sentences['column_analysis'] + '\n' + colText
 
-  gpt_prompt = "Rewrite: " + text + "\nMoreover, tell what this dataset could be referred to given the columns: " + ', '.join(newData.columns)
+  gpt_prompt = "Rewrite on your own: " + text + "\nMoreover, tell what this dataset could be referred to given the columns: " + ', '.join(newData.columns)
 
   import openai
   openai.api_key = os.getenv("GPT_CODEX_API_KEY")
@@ -296,7 +340,7 @@ def summarization(mydb, session, keywords, countryInfo):
       messages=[{
           "role": "user", "content": gpt_prompt
       }],
-      temperature=0.2,
+      temperature=0.5,
       max_tokens=550,
       top_p=1.0
   )

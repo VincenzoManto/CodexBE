@@ -48,9 +48,9 @@ if (connection['type'] == 'mssql'):
     ON fkc.referenced_column_id = cref.column_id
         AND fkc.referenced_object_id = cref.object_id ) A on PARENT = table_name and COLNAME = column_name
       where 
-      table_name like '""" + letter + """%' and TABLE_SCHEMA = '""" + connection['name'] + """' 
-      order by TABLE_NAMe
-  """)
+      table_name like '""" + letter + """%' and (TABLE_SCHEMA = '""" + connection['name'] + """'  or TABLE_CATALOG = '""" + connection['name'] + """')
+      order by TABLE_NAMe""")
+  cursor = cursor.fetchall()
 
 if connection['type'] == 'mysql':
   conn = mysql.connector.connect(
@@ -96,13 +96,15 @@ tableColumns = {}
 index = 0
 for row in cursor:
   if (row['table_name'] not in cols):
-    cols[row['table_name']] = {}
     filtered = list(filter(lambda x: x['name'] == row['table_name'], tables))
     table = None
     if (len(filtered) > 0):
       table = filtered[0]
       mycursor.execute("SELECT * FROM `columns` WHERE `table` = %s", (int(table['id']),))
       tableColumns[row['table_name']] = mycursor.fetchall()
+    if (len(filtered) == 0 and letter == '%'):
+      continue
+    cols[row['table_name']] = {}
     cols[row['table_name']]['pos'] = {}
     cols[row['table_name']]['pos']['x'] = int(index / 1000) * 200 + 100
     cols[row['table_name']]['pos']['y'] = int(index % 500) + 100

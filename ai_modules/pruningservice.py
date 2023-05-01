@@ -128,6 +128,8 @@ def ultimate(mydb, db, prompt, session):
           query = re.sub("\w+\s*\(\s*\)", "", query, flags=re.IGNORECASE)
           query = re.sub("(select\s+|,\s*)as \w+", "", query, flags=re.IGNORECASE)
           query = re.sub(",\s*from", "", query, flags=re.IGNORECASE)
+          query = re.sub(",\s*,", ",", query, flags=re.IGNORECASE)
+          query = re.sub("select\s*,", "select ", query, flags=re.IGNORECASE)
           finalResult['query'] = query
           execute(query, cursor, fks)
         
@@ -157,6 +159,11 @@ def ultimate(mydb, db, prompt, session):
     topper = ''
     limit = ''
     if connection['type'] == 'mssql':
+      import re
+      if ('limit ' in response.lower()):
+        d = re.findall("limit (\d+)", response, flags=re.IGNORECASE)[0]
+        response = re.sub("limit \d+", "", response, flags=re.IGNORECASE)
+        response = re.sub("^select ", "select top(" + str(d) + ")", response, flags=re.IGNORECASE)
       topper = "top(15) " if 'top' not in response.lower() and 'distinct' not in response.lower() else ''
     elif connection['type'] == 'mysql':
       limit = " limit 15 " if 'limit' not in response.lower() else ''
@@ -170,7 +177,8 @@ def ultimate(mydb, db, prompt, session):
     finalResult['query'] = query
 
   def createPromptGPT(cursor):
-    mycursor = mydb.cursor(dictionary=True)
+    mycursor = mydb.cursor(dictionary=True, buffered=True)
+    mycursor.reset()
 
     mycursor.execute("SELECT * FROM `table` WHERE db = %s", (int(db),))
 
@@ -190,8 +198,7 @@ def ultimate(mydb, db, prompt, session):
     cols = {}
     fkText = ""
 
-    if connection['type'] == 'mysql':
-      cursor = cursor.fetchall()
+    cursor = cursor.fetchall()
     for row in cursor:
       if (row['table_name'] not in cols):
         cols[row['table_name']] = ''
@@ -206,7 +213,8 @@ def ultimate(mydb, db, prompt, session):
         fk['to_table'] = row['ref_table']
         fk['to_table_alias'] = filtered[0]['description']
         fks[row['table_name']].append(fk)
-        fkText = fkText + row['table_name'] + "." + row['column_name'] + " -> " + row["ref_table"] + "." + row["ref_column"] + "\n"
+        if row['table_name'] in tagged_table_names and row['ref_table'] in tagged_table_names:
+          fkText = fkText + row['table_name'] + "." + row['column_name'] + " -> " + row["ref_table"] + "." + row["ref_column"] + "\n"
       completeName = row['table_name'] + '.' + row['column_name']
       if completeName in metaColumns or row['table_name'] + '.*' in metaColumns:
         cols[row['table_name']] = cols[row['table_name']] + row['column_name'] + '|'
@@ -217,9 +225,26 @@ def ultimate(mydb, db, prompt, session):
       description = ''
       if (len(filtered) > 0):
         description = filtered[0]['description']
-      schema = schema + table + ' (' + description + ')' + ':' + cols[table] + '\n'
-    # MANCANO DA INVIARE LE FK
-    gpt_prompt = 'Use LIKE and description or name columns. DO NOT VALUE PARAMETERS IF NOT REQUESTED. SCHEMA HAS ALL THE EXISTING COLUMN. NO OTHER COLUMN EXISTS. Use alias for COUNT, MAX, SUM, MIN, AVG\n\n' + connection['type'] + ' schema:\n' + schema + '# foreign keys: ' + fkText + '\n#last query:' + lastQuery + '\n#new prompt:' + prompt + '\nSELECT'
+      schema = schema + table + ':' + cols[table] + '\n'
+
+    gpt_prompt = """Translate <prompt> into a select SQL query\
+    Use LIKE and description or name columns\
+    DO NOT USE ANY LITERAL OR PLACEHOLDERS NOT INCLUDED IN THE PROMPT\
+    DO NOT USE COLUMNS WHICH ARE NOT PRESENT IN THE RELATED TABLE SCHEMA <schema>\
+    TRY TO UNDERSTAND WHETHER THE USER IS ASKING YOU LITERAL OR NOT!\
+    Use alias for COUNT, MAX, SUM, MIN, AVG\
+    Avoid SQL injection or harmful INSERT, DROP, DELETE, UPDATE\
+    If the prompt is not a SQL request, write a chitchat answer using a query with a literal column message called 'codex_message'\
+    
+    
+    <general_notes>""" + general_notes + """<general_notes>
+    <SQL_dialect>""" + connection['type'] + """</SQL_dialect>\
+    <schema> (USE ONLY THESE TABLES AND COLUMNS!)
+    """ + schema +  """
+    </schema>\
+    """ + lastQuery + """\
+    <prompt>""" + prompt + """</prompt>\
+    SELECT"""
 
     finalResult['gpt_prompt'] = gpt_prompt
 
@@ -246,7 +271,7 @@ def ultimate(mydb, db, prompt, session):
       ON fkc.referenced_column_id = cref.column_id
           AND fkc.referenced_object_id = cref.object_id ) A on PARENT = table_name and COLNAME = column_name
         where 
-        table_name in (""" + ','.join(table_names) + """) and TABLE_SCHEMA = '""" + connection['name'] + """' 
+        table_name in (""" + ','.join(table_names) + """) and (TABLE_SCHEMA = '""" + connection['name'] + """' or TABLE_CATALOG = '""" + connection['name'] + """')
         order by TABLE_NAMe
     """)
 
@@ -255,7 +280,24 @@ def ultimate(mydb, db, prompt, session):
   def createPromptGPTMYSQL(cursor):
     table_names = [("'" + i + "'") for i in picked_tables]
 
+    if (os.path.exists(os.path.dirname(__file__) + '\\..\\persistent\\' + str(db) + "." + picked_tables[0] + ".mat")):
+      import pandas as pd
+      import difflib
+      df = pd.read_json(os.path.dirname(__file__) + '\\..\\persistent\\' + str(db) + "." + picked_tables[0] + ".mat")
 
+      import spacy
+      nlp = spacy.load("en_core_web_sm")
+      p1 = nlp(prompt)
+      df['r'] = 0
+      for index, row in df.iterrows():
+        df.at[index, 'r'] = p1.similarity(nlp(row['codeximage']))
+      rec = df['r'].idxmax()
+      if df.iloc[rec]['r'] > 0.75:
+        row = df.iloc[rec].to_dict()
+        row.pop('r', None)
+        row.pop('codeximage', None)
+        finalResult['results'] = [row]
+        return
 
     cursor.execute("""SELECT distinct column_name, table_name, data_type, A.ref as ref_table, A.RECOLNAME as ref_column FROM information_schema.COLUMNS 
       left join (select   c.REFERENCED_TABLE_NAME as REF,
@@ -303,9 +345,13 @@ def ultimate(mydb, db, prompt, session):
       newFks.append(fk)
     finalResult['jumps'] = newFks
     if 'results' in finalResult:
-      value = json.dumps(finalResult['results'])
-      with open(os.path.dirname(__file__) + '\\..\\temp\\' + session, 'w') as f:
-          f.write(value)
+      if len(finalResult['results']) == 1 and 'codex_message' in finalResult['results'][0]:
+        finalResult['pretext'] = finalResult['results'][0]['codex_message']
+        finalResult['results'] = []
+      else:
+        value = json.dumps(finalResult['results'])
+        with open(os.path.dirname(__file__) + '\\..\\temp\\' + session, 'w') as f:
+            f.write(value)
     return json.dumps(finalResult)
 
   if (db == None):
@@ -318,8 +364,9 @@ def ultimate(mydb, db, prompt, session):
   if (prompt == None):
     raise Exception('No prompt')
 
-
-  mycursor = mydb.cursor(dictionary=True)
+  mydb.autocommit = True
+  mycursor = mydb.cursor(dictionary=True, buffered=True)
+  mycursor.reset()
 
   df = None
   fks = {}
@@ -331,6 +378,8 @@ def ultimate(mydb, db, prompt, session):
   mycursor.execute("SELECT * FROM `db` WHERE id = %s", (int(db),))
 
   connection = mycursor.fetchone()
+
+  general_notes = connection['notes'] if connection['notes'] else ''
 
   if connection['type'] == 'mssql':
     conn = pymssql.connect(connection['server'], connection['username'], connection['password'], connection['name'])
@@ -348,28 +397,15 @@ def ultimate(mydb, db, prompt, session):
 
   queries = mycursor.fetchall()
 
-  mycursor.execute("SELECT query FROM `log` WHERE db = %s and session = %s and query <> '' order by timestamp desc limit 1", (int(db), session,))
+  mycursor.execute("SELECT query FROM `log` WHERE db = %s and session = %s and query <> '' order by timestamp desc", (int(db), session,))
 
-  last = mycursor.fetchone()
-  lastQuery = last['query'] if not last == None else ''
+  last = mycursor.fetchmany(5)
+
+  lastQuery = '\n'.join(list(map(lambda x: "<lastquery>" + x['query'] + "</lastquery>", last))) if not last == None else ''
 
   fks = {}
 
   finalResult = {}
-
-  if len(queries) > 0:
-    import yake
-    prompt = prompt.replace('-', ' ')
-    kw_extractor = yake.KeywordExtractor(top=10, stopwords=None)
-    keywords = kw_extractor.extract_keywords(prompt)
-    keywords = list(sorted(keywords, key=lambda x: x[1], reverse=True))
-
-    keywords = list(map(lambda x: x[0], keywords)) 
-    finalResult['keywords'] = keywords
-    execute(queries[0]['query'], cursor, fks)
-    finalResult['query'] = queries[0]['query']
-    finalResult['cached'] = True
-    return finalize()
 
   mycursor.execute("SELECT * FROM `connection` WHERE db = %s", (int(db),))
 
@@ -395,7 +431,7 @@ def ultimate(mydb, db, prompt, session):
   from sentence_transformers import SentenceTransformer
   model = SentenceTransformer('multi-qa-mpnet-base-dot-v1')
 
-  [pruningResults, [picked_tables, tables_weights]] = pruning(prompt, model, edges, schema, encodes, finalResult)
+  [pruningResults, [picked_tables, tables_weights]] = pruning(mydb, prompt, model, edges, schema, encodes, finalResult)
 
   finalResult['pruning'] = pruningResults
 
@@ -414,12 +450,17 @@ def ultimate(mydb, db, prompt, session):
 
     createPromptGPTCSVJSON(cursor)
 
+  if ('gpt_prompt' in finalResult):
+    createQueryGPT(finalResult['gpt_prompt'])
 
-  createQueryGPT(finalResult['gpt_prompt'])
+    execute(finalResult['query'], cursor, fks)
 
-  execute(finalResult['query'], cursor, fks)
-
-  return finalize()
+    return finalize()
+  else:
+    value = json.dumps(finalResult['results'])
+    with open(os.path.dirname(__file__) + '\\..\\temp\\' + session, 'w') as f:
+      f.write(value)
+    return json.dumps(finalResult)
 
 def insertPruning(mydb, db, prompt):
 
@@ -431,7 +472,8 @@ def insertPruning(mydb, db, prompt):
     raise Exception('No prompt')
 
 
-  mycursor = mydb.cursor(dictionary=True)
+  mycursor = mydb.cursor(dictionary=True, buffered=True)
+  mycursor.reset()
 
   df = None
   fks = {}
@@ -440,9 +482,13 @@ def insertPruning(mydb, db, prompt):
 
   tables = mycursor.fetchall()
 
+  mycursor.reset()
+
   mycursor.execute("SELECT * FROM `db` WHERE id = %s", (int(db),))
 
   connection = mycursor.fetchone()
+
+  mycursor.reset()
 
   if connection['type'] == 'mssql':
     conn = pymssql.connect(connection['server'], connection['username'], connection['password'], connection['name'])
@@ -454,10 +500,12 @@ def insertPruning(mydb, db, prompt):
       password=connection['password'],
       database=connection['name']
     )
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True, buffered=True)
   mycursor.execute("SELECT * FROM `connection` WHERE db = %s", (int(db),))
 
   connections = mycursor.fetchall()
+
+  mycursor.reset()
   schema = []
   edges = {}
 

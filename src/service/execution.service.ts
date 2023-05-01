@@ -45,7 +45,7 @@ export async function insertExecute(id: number, message: string, session: string
 
 export async function queryExecution(id: number, query: string, session: string, next: any) {
     console.log("Start pruning");
-    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/execution.py", id.toString(), query, session]);
+    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "execution", id.toString(), query, session]);
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
         console.log(errorText);
@@ -54,7 +54,7 @@ export async function queryExecution(id: number, query: string, session: string,
         const data = pythonProcess.stdout.toString().trim(); 
         const jsonData = JSON.parse(data);
         if (jsonData.results?.length) {
-            const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/data_summarization.py", session, JSON.stringify(jsonData.keywords || [])]);
+            const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "summarization", session, JSON.stringify(jsonData.keywords || [])]);
 
             let summaryResults: any;
         
@@ -72,7 +72,7 @@ export async function queryExecution(id: number, query: string, session: string,
                     }
                 });
             }
-            const pythonProcessVis = ChildProcess.spawnSync('python',["ai_modules/data_visualization.py", session, "Show me a bar chart"]);
+            const pythonProcessVis = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "visualization", session, "Show me a bar chart"]);
             if (!pythonProcessVis.stderr.toString().trim()) {
                 jsonData.chart = pythonProcessVis.stdout.toString().trim();
             } else {
@@ -92,14 +92,14 @@ export async function queryExecution(id: number, query: string, session: string,
 };
 
 export async function diving(id: number, body: any, session: string) {
-    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/deep_diving.py", id.toString(), session, JSON.stringify(body)]);
+    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "deepdiving", id.toString(), session, JSON.stringify(body)]);
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
         console.log("error", errorText);
         throw new Error('Error on diving');
     } else {
         const data: any = JSON.parse(pythonProcess.stdout.toString().trim()); 
-        const pythonProcessSum = ChildProcess.spawnSync('python',["ai_modules/data_summarization.py", session, JSON.stringify([body.to_table] || [])]);
+        const pythonProcessSum = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "summarization", session, JSON.stringify([body.to_table] || [])]);
 
     
         const summarizationErrorText = pythonProcessSum.stderr?.toString().trim();
@@ -178,7 +178,7 @@ function pruning (id: number, message: string, session: string, step: number = 0
 }
 
 export async function createDashboard(db: number, obj: string) {
-    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/dashboard_pruning.py", db.toString(), obj]);
+    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "dashboard", db.toString(), obj]);
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
         console.log("No DV");
@@ -189,7 +189,7 @@ export async function createDashboard(db: number, obj: string) {
 }
 
 export async function pptx(id: number, queries: [], titles: []) {
-    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/data_presentation.py", id.toString(), JSON.stringify(queries), JSON.stringify(titles)]);
+    const pythonProcess = ChildProcess.spawnSync('python',["ai_modules/adapter.py", "exportPPTX", id.toString(), JSON.stringify(queries), JSON.stringify(titles)]);
     const errorText = pythonProcess.stderr.toString().trim();
     if (errorText) {
         console.log(errorText);

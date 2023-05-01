@@ -71,7 +71,7 @@ export async function createDashboardHandler(req: Request, res: Response, next: 
                         intent: 'presentation'
                     })
                 } else if (NLU.intent?.name === 'schema') {
-                    if ((req.body.chat && NLU.intent?.confidence > 0.95) || !req.body.chat) {
+                    if ((req.body.chat && NLU.intent?.confidence > 0.98) || !req.body.chat) {
                         console.log(NLU?.intent?.confidence)
                         res.send({
                             intent: 'schema'

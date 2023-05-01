@@ -3,6 +3,9 @@ from pruningservice import *
 from data_summarizationservice import *
 from data_visualizationservice import *
 from deep_divingservice import *
+from execution import *
+from dashboard_pruningservice import *
+from data_presentationservice import *
 import socket
 import time
 
@@ -60,6 +63,15 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                             if 'deepdiving' == dataStr[0]:
                                 conn.sendall(deepDiving(mydb, dataStr[1], dataStr[2], dataStr[3]).encode('utf-8'))
                                 print(time.time() - start_time)
+                            if 'execution' == dataStr[0]:
+                                conn.sendall(hardExecution(mydb, dataStr[1], dataStr[2], dataStr[3]).encode('utf-8'))
+                                print(time.time() - start_time)
+                            if 'dashboard' == dataStr[0]:
+                                conn.sendall(dashboardCreation(mydb, dataStr[1], dataStr[2]).encode('utf-8'))
+                                print(time.time() - start_time)
+                            if 'exportPPTX' == dataStr[0]:
+                                conn.sendall(presentData(mydb, dataStr[1], dataStr[2], dataStr[3]).encode('utf-8'))
+                                print(time.time() - start_time)
                                 
                             if 'close' == dataStr[0]:
                                 conn.close()
@@ -68,6 +80,13 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                         except Exception as e:
                             import traceback
                             print(traceback.format_exc())
+                            if str(e) == 'Unread result found':
+                                mydb = mysql.connector.connect(
+                                    host=os.getenv("CODEX_DB_HOST"),
+                                    user=os.getenv("CODEX_DB_USER"),
+                                    password=os.getenv("CODEX_DB_PASS"),
+                                    database=os.getenv("CODEX_DB_NAME")
+                                )
                             conn.sendall(('<ERROR>: ' + str(e)).encode('utf-8'))
                             pass
             except:

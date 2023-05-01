@@ -101,7 +101,8 @@ for table in tables.keys():
     cursor.execute("SELECT * FROM " + table + " LIMIT 100")
     data = pd.DataFrame(cursor.fetchall())
   elif connection['type'] == 'mssql':
-    data = pd.DateOffset(cursor.execute("SELECT TOP(100) * FROM " + table))
+    cursor.execute("SELECT TOP(100) * FROM " + table)
+    data = pd.DataFrame(cursor.fetchall())
 
   total_length = len(data. index)
   corelation_values = abs(data.corr(numeric_only = True))

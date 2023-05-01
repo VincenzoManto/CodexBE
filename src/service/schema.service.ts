@@ -29,6 +29,12 @@ export async function getAllDbs() {
     });
 };
 
+export async function setNotes(notes: string, db: number) {
+    await DbMeta.getInstance().Db.update({
+        notes
+    }, {  where: { id: db }});
+}
+
 export async function setSchema(tables: Array<any>) {
     try {
         const toInsert = _.cloneDeep(tables.filter(e => e.id === 0 && e.name));

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { getAllDbs, getSchema, setSchema, tagging } from "../service/schema.service";
+import { getAllDbs, getSchema, setNotes, setSchema, tagging } from "../service/schema.service";
 
 
 export async function getDbs(req: Request, res: Response, next: any) {
@@ -24,6 +24,7 @@ export async function getSchemaHandler(req: Request, res: Response, next: any) {
 
 export async function setSchemaHandler(req: Request, res: Response, next: any) {
     try {
+        await setNotes(req.body.notes, +req.params.id);
         const dbs = await setSchema(req.body.tables);
         
         return res.send(dbs);

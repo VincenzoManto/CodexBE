@@ -47,6 +47,11 @@ dashboardProcess.stderr.on('data', (data) => {
   console.log(data.toString());
 });
 
+const adapterProcess = ChildProcess.spawn('python',["ai_modules/try.py"]);
+adapterProcess.stderr.on('data', (data) => {
+  console.log(data.toString());
+});
+
 fs.readdir('./temp', (err: any, files: any) => {
   if (err) throw err;
 
